@@ -39,11 +39,19 @@ namespace GaussianSplatting.Editor
 
                 foreach (ShaderMessage message in ShaderUtil.GetShaderMessages(shader))
                 {
-                    if (message.severity != ShaderCompilerMessageSeverity.Error)
+                    // "Both vertex and fragment programs must be present in a shader snippet" is only
+                    // a warning, but it means the snippet was thrown away and the shader renders
+                    // nothing. Unity 6 raises it whenever the entry-point pragmas sit in an included
+                    // file, which is exactly how these shaders were written for Unity 2022 -- so a
+                    // check that only looked at Errors reported a clean bill of health for shaders
+                    // that were, in fact, entirely dead. Treat it as fatal.
+                    bool fatal = message.severity == ShaderCompilerMessageSeverity.Error
+                        || message.message.Contains("must be present in a shader snippet");
+                    if (!fatal)
                     {
                         continue;
                     }
-                    failures.AppendLine("SHADER ERROR " + path + " (" + message.file + ":" + message.line + "): " + message.message);
+                    failures.AppendLine("SHADER " + message.severity.ToString().ToUpperInvariant() + " " + path + " (" + message.file + ":" + message.line + "): " + message.message);
                 }
             }
 

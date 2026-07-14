@@ -55,7 +55,7 @@ Shader "VRChatGaussianSplatting/GaussianSplatting"
             }
             CGPROGRAM
             #define GS_USE_ELLIPSOID_HIT_DEPTH
-            #include "GS.cginc"
+            #include_with_pragmas "GS.cginc"
             ENDCG
         }
     }

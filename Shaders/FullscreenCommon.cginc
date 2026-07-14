@@ -1,3 +1,4 @@
+// Pull this file in with #include_with_pragmas, not #include -- see the note in GS.cginc.
 #pragma vertex vert
 #pragma fragment frag
 #include "UnityCG.cginc"

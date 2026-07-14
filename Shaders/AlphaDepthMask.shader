@@ -21,7 +21,7 @@ Shader "VRChatGaussianSplatting/AlphaDepthMask"
             }
             CGPROGRAM
             #pragma multi_compile_instancing
-            #include "FullscreenCommon.cginc"
+            #include_with_pragmas "FullscreenCommon.cginc"
             UNITY_DECLARE_SCREENSPACE_TEXTURE(_GS_GrabTexture);
             float4 frag(v2f i) : SV_Target {
                 UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX(i);

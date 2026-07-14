@@ -52,7 +52,7 @@ Shader "VRChatGaussianSplatting/GaussianSplattingSimpleBackToFront"
             #define GS_USE_ELLIPSOID_HIT_DEPTH
             #define _BACK_TO_FRONT
             #define _FAKE_SRGB
-            #include "GS.cginc"
+            #include_with_pragmas "GS.cginc"
             ENDCG
         }
     }

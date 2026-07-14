@@ -1,3 +1,7 @@
+// Pull this file in with #include_with_pragmas, not #include: Unity ignores Unity-specific #pragma
+// directives in files brought in with a plain #include. Unity 2022.3 honoured them anyway, so the
+// shaders worked under VRChat; Unity 6 does not, and the snippet is dropped for having no entry
+// points, leaving the shader unsupported and its materials propertyless.
 #define UNITY_SHADER_NO_UPGRADE 1
 #ifdef GS_NO_GEOM
 #pragma target 3.5

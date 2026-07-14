@@ -54,7 +54,7 @@ Shader "VRChatGaussianSplatting/GaussianSplattingNoGeom"
             }
             CGPROGRAM
             #define GS_NO_GEOM
-            #include "GS.cginc"
+            #include_with_pragmas "GS.cginc"
             ENDCG
         }
     }

@@ -16,7 +16,7 @@ Shader "VRChatGaussianSplatting/ToLinear"
             Cull Off
             CGPROGRAM
             #pragma multi_compile_instancing
-            #include "FullscreenCommon.cginc"
+            #include_with_pragmas "FullscreenCommon.cginc"
             UNITY_DECLARE_SCREENSPACE_TEXTURE(_GS_SRGBBackground);
             UNITY_DECLARE_SCREENSPACE_TEXTURE(_GS_LinearBackground);
             float4 frag(v2f i) : SV_Target {
