@@ -76,8 +76,6 @@ public partial class GaussianSplatRenderer : MonoBehaviour
     [Range(0.0f, 5.0f)] [SerializeField] float opacity = 1.0f;
     [SerializeField] Vector3 oklchShift = Vector3.zero;
     [SerializeField] float gamma = 1.0f;
-    [SerializeField] bool useVrcLightVolumes;
-    [Range(0.0f, 4.0f)] [SerializeField] float lightVolumeIntensity = 1.0f;
 
 #if UNITY_EDITOR
     static bool _editorRefreshQueued = true;
@@ -508,9 +506,6 @@ public partial class GaussianSplatRenderer : MonoBehaviour
             return;
         }
         if (material.HasProperty("_SHBand")) material.SetFloat("_SHBand", Mathf.Clamp(currentSHBand, 0, 3));
-        if (useVrcLightVolumes) material.EnableKeyword("_VRC_LIGHT_VOLUMES_ON");
-        else material.DisableKeyword("_VRC_LIGHT_VOLUMES_ON");
-        if (material.HasProperty("_LightVolumeIntensity")) material.SetFloat("_LightVolumeIntensity", lightVolumeIntensity);
         if (!overrideMaterialProperties)
         {
             return;
@@ -577,13 +572,8 @@ public partial class GaussianSplatRenderer : MonoBehaviour
     public bool GetAlwaysUpdate() { return IsCombinedRenderingMode() || alwaysUpdate; }
     public void SetAlwaysUpdate(bool value) { alwaysUpdate = value; ResetCameraPositions(); }
     public void ToggleAlwaysUpdate() { SetAlwaysUpdate(!alwaysUpdate); }
-    public bool GetUseVrcLightVolumes() { return useVrcLightVolumes; }
-    public void SetUseVrcLightVolumes(bool value) { useVrcLightVolumes = value; ApplyMaterialSettingsToSelectedObject(); }
-    public void ToggleVrcLightVolumes() { SetUseVrcLightVolumes(!useVrcLightVolumes); }
     public float GetAntiAliasing() { return antiAliasing; }
     public void SetAntiAliasing(float value) { overrideMaterialProperties = true; antiAliasing = Mathf.Clamp(value, 0.0f, 3.0f); ApplyMaterialSettingsToSelectedObject(); }
-    public float GetLightVolumeIntensity() { return lightVolumeIntensity; }
-    public void SetLightVolumeIntensity(float value) { overrideMaterialProperties = true; lightVolumeIntensity = Mathf.Clamp(value, 0.0f, 4.0f); ApplyMaterialSettingsToSelectedObject(); }
     public void SetGaussianScale(float value) { overrideMaterialProperties = true; gaussianScale = Mathf.Clamp(value, 0.0f, 2.0f); ApplyMaterialSettingsToSelectedObject(); }
     public void SetAlphaCutoff(float value) { overrideMaterialProperties = true; alphaCutoff = Mathf.Clamp(value, 0.005f, 0.3f); ApplyMaterialSettingsToSelectedObject(); }
     public float GetAlphaCull() { return alphaCull; }

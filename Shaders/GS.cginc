@@ -6,7 +6,6 @@
 #pragma exclude_renderers gles
 #endif
 #pragma shader_feature_local _PRECOMPUTED_SORTING_ON
-#pragma multi_compile_local __ _VRC_LIGHT_VOLUMES_ON
 #pragma vertex vert
 #pragma fragment frag
 #ifndef GS_NO_GEOM
@@ -19,11 +18,6 @@
 #include "UnityCG.cginc"
 #include "GSData.cginc"
 #include "GSMath.cginc"
-
-#ifdef _VRC_LIGHT_VOLUMES_ON
-#include "LightVolumes.cginc"
-float _LightVolumeIntensity;
-#endif
 
 #define GS_MAX_VERTEX_COUNT 4
 
@@ -272,17 +266,6 @@ void geo(point v2g input[1], inout TriangleStream<g2f> triStream, uint instanceI
     float areaScale = area / areaPost;
     o.color.a *= areaScale; // scale alpha by area ratio
     o.gaussianExp = 0.5 * cutoffSigmaRadius * cutoffSigmaRadius;
-
-#ifdef _VRC_LIGHT_VOLUMES_ON
-    if (LightVolumesEnabled())
-    {
-        float3 L0, L1r, L1g, L1b;
-        LightVolumeSH(splatWorldPos, L0, L1r, L1g, L1b);
-        float3 emissivePart = max(o.color.rgb - 1.0, 0.0);
-        float3 albedoPart = min(o.color.rgb, 1.0);
-        o.color.rgb = albedoPart * LinearToGammaSpace(abs(L0)) * _LightVolumeIntensity + emissivePart;
-    }
-#endif
 
 #ifdef GS_NO_GEOM
     uint vtxID = v.vertexID & 3u;

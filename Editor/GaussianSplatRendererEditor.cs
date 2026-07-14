@@ -35,8 +35,6 @@ namespace GaussianSplatting.Editor
         SerializedProperty _opacity;
         SerializedProperty _oklchShift;
         SerializedProperty _gamma;
-        SerializedProperty _useVrcLightVolumes;
-        SerializedProperty _lightVolumeIntensity;
 
         void OnEnable()
         {
@@ -66,8 +64,6 @@ namespace GaussianSplatting.Editor
             _opacity = serializedObject.FindProperty("opacity");
             _oklchShift = serializedObject.FindProperty("oklchShift");
             _gamma = serializedObject.FindProperty("gamma");
-            _useVrcLightVolumes = serializedObject.FindProperty("useVrcLightVolumes");
-            _lightVolumeIntensity = serializedObject.FindProperty("lightVolumeIntensity");
         }
 
         public override void OnInspectorGUI()
@@ -248,11 +244,6 @@ namespace GaussianSplatting.Editor
         void DrawMaterialSettings()
         {
             EditorGUILayout.IntSlider(_requestedSHBand, 0, 3, GSEditorText.C("Requested SH Band", "要求 SH バンド"));
-            EditorGUILayout.PropertyField(_useVrcLightVolumes, GSEditorText.C("Use VRC Light Volumes", "VRC Light Volumes を使用"));
-            using (new EditorGUI.DisabledScope(!_useVrcLightVolumes.boolValue))
-            {
-                EditorGUILayout.Slider(_lightVolumeIntensity, 0.0f, 10.0f, GSEditorText.C("Light Volume Intensity", "ライトボリューム強度"));
-            }
 
             EditorGUILayout.Space();
             DrawQualityPresetButtons();

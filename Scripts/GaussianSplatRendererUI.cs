@@ -18,7 +18,6 @@ public class GaussianSplatRendererUI : MonoBehaviour
     const float MinPositiveLodSplatCap = 10000.0f;
     const int SliderShBand = 0;
     const int SliderAntiAliasing = 1;
-    const int SliderLightVolumeIntensity = 2;
     const int SliderAlphaCutoff = 3;
     const int SliderAlphaCull = 4;
     const int SliderLODSplatCap = 5;
@@ -44,14 +43,14 @@ public class GaussianSplatRendererUI : MonoBehaviour
     [Header("UI References")]
     public TextMeshProUGUI subtitleText, customSubtitleText;
     public TextMeshProUGUI currentSplatText, sortingSectionText, cameraQuantizationLabelText, cameraQuantizationText;
-    public TextMeshProUGUI alwaysUpdateLabelText, materialSectionText, shBandLabelText, shBandText, vrcLightVolumesLabelText, antiAliasingLabelText, antiAliasingText;
-    public TextMeshProUGUI lightVolumeIntensityLabelText, lightVolumeIntensityText, gaussianScaleLabelText, gaussianScaleText, alphaCutoffLabelText, alphaCutoffText;
+    public TextMeshProUGUI alwaysUpdateLabelText, materialSectionText, shBandLabelText, shBandText, antiAliasingLabelText, antiAliasingText;
+    public TextMeshProUGUI gaussianScaleLabelText, gaussianScaleText, alphaCutoffLabelText, alphaCutoffText;
     public TextMeshProUGUI alphaCullLabelText, alphaCullText;
     public TextMeshProUGUI lodCullLabelText, lodCullText, qualitySectionText;
     public TextMeshProUGUI languageSectionText, splatSectionText;
-    public Button alwaysUpdateButton, vrcLightVolumesButton, englishLanguageButton, japaneseLanguageButton, splatScrollUpButton, splatScrollDownButton;
+    public Button alwaysUpdateButton, englishLanguageButton, japaneseLanguageButton, splatScrollUpButton, splatScrollDownButton;
     public Button qualityVeryLowButton, qualityLowButton, qualityMediumButton, qualityHighButton;
-    public Slider shBandSlider, antiAliasingSlider, lightVolumeIntensitySlider, alphaCutoffSlider;
+    public Slider shBandSlider, antiAliasingSlider, alphaCutoffSlider;
     public Slider alphaCullSlider, lodCullSlider;
     public Button[] splatButtons;
     [HideInInspector] public GaussianSplatObject[] cachedSceneSplatObjects;
@@ -73,7 +72,6 @@ public class GaussianSplatRendererUI : MonoBehaviour
     bool _layoutDefaultsInitialized;
     float _lastShBandSliderValue;
     float _lastAntiAliasingSliderValue;
-    float _lastLightVolumeIntensitySliderValue;
     float _lastAlphaCutoffSliderValue;
     float _lastAlphaCullSliderValue;
     float _lastLODSplatCapSliderValue;
@@ -444,8 +442,6 @@ public class GaussianSplatRendererUI : MonoBehaviour
         SetLocalizedText(alwaysUpdateLabelText, "Sort every frame", "毎フレームソート");
         SetLocalizedText(materialSectionText, "Material Settings", "マテリアル設定");
         SetLocalizedText(shBandLabelText, "SH Band (global)", "SH バンド (共有)");
-        SetLocalizedText(vrcLightVolumesLabelText, "VRC Light Volumes (global)", "VRC Light Volumes (共有)");
-        SetLocalizedText(lightVolumeIntensityLabelText, "Light Volume Intensity", "ライトボリューム強度");
         SetLocalizedText(antiAliasingLabelText, "Antialiasing", "アンチエイリアス");
         SetLocalizedText(gaussianScaleLabelText, "Gaussian Scale (global)", "ガウススケール (共有)");
         SetLocalizedText(alphaCutoffLabelText, "Alpha Cutoff\n(lower = better quality)", "アルファカットオフ\n(低いほど高品質)");
@@ -807,15 +803,8 @@ public class GaussianSplatRendererUI : MonoBehaviour
 #else
         bool allowWriteBack = true;
 #endif
-        if (vrcLightVolumesButton != null)
-        {
-            bool enabled = gaussianSplatRenderer.GetUseVrcLightVolumes();
-            SetInteractable(vrcLightVolumesButton, true);
-            ApplyButtonVisual(vrcLightVolumesButton, ToggleLabel(enabled), enabled ? _toggleEnabledColor : _toggleDisabledColor);
-        }
         SyncSlider(shBandSlider, shBandText, SliderShBand, SliderCanWriteBack(SliderShBand, allowWriteBack));
         SyncSlider(antiAliasingSlider, antiAliasingText, SliderAntiAliasing, allowWriteBack);
-        SyncSlider(lightVolumeIntensitySlider, lightVolumeIntensityText, SliderLightVolumeIntensity, allowWriteBack);
         SyncSlider(alphaCutoffSlider, alphaCutoffText, SliderAlphaCutoff, allowWriteBack);
         SyncSlider(alphaCullSlider, alphaCullText, SliderAlphaCull, allowWriteBack);
         bool showLODControls = ShouldShowLODControls();
@@ -853,7 +842,6 @@ public class GaussianSplatRendererUI : MonoBehaviour
         {
             case SliderShBand: return gaussianSplatRenderer.GetCurrentSHBand();
             case SliderAntiAliasing: return gaussianSplatRenderer.GetAntiAliasing();
-            case SliderLightVolumeIntensity: return gaussianSplatRenderer.GetLightVolumeIntensity();
             case SliderAlphaCull: return gaussianSplatRenderer.GetAlphaCull();
             case SliderLODSplatCap: return gaussianSplatRenderer.GetEffectiveCombinedLodSplatBudget();
             default: return gaussianSplatRenderer.alphaCutoff;
@@ -866,7 +854,6 @@ public class GaussianSplatRendererUI : MonoBehaviour
         {
             case SliderShBand: return _lastShBandSliderValue;
             case SliderAntiAliasing: return _lastAntiAliasingSliderValue;
-            case SliderLightVolumeIntensity: return _lastLightVolumeIntensitySliderValue;
             case SliderAlphaCull: return _lastAlphaCullSliderValue;
             case SliderLODSplatCap: return _lastLODSplatCapSliderValue;
             default: return _lastAlphaCutoffSliderValue;
@@ -882,9 +869,6 @@ public class GaussianSplatRendererUI : MonoBehaviour
                 return;
             case SliderAntiAliasing:
                 _lastAntiAliasingSliderValue = value;
-                return;
-            case SliderLightVolumeIntensity:
-                _lastLightVolumeIntensitySliderValue = value;
                 return;
             case SliderAlphaCull:
                 _lastAlphaCullSliderValue = value;
@@ -907,9 +891,6 @@ public class GaussianSplatRendererUI : MonoBehaviour
                 return;
             case SliderAntiAliasing:
                 gaussianSplatRenderer.SetAntiAliasing(value);
-                return;
-            case SliderLightVolumeIntensity:
-                gaussianSplatRenderer.SetLightVolumeIntensity(value);
                 return;
             case SliderAlphaCull:
                 gaussianSplatRenderer.SetAlphaCull(value);
@@ -1117,7 +1098,6 @@ public class GaussianSplatRendererUI : MonoBehaviour
     public void DecreaseCameraQuantization() { StepCameraQuantization(-cameraQuantizationStep); }
 
     public void ToggleAlwaysUpdate() { if (gaussianSplatRenderer == null) return; gaussianSplatRenderer.ToggleAlwaysUpdate(); RefreshUI(); }
-    public void ToggleVrcLightVolumes() { if (gaussianSplatRenderer == null) return; gaussianSplatRenderer.ToggleVrcLightVolumes(); RefreshUI(); }
 
     public void IncreaseGaussianScale() { StepGaussianScale(gaussianScaleStep); }
     public void DecreaseGaussianScale() { StepGaussianScale(-gaussianScaleStep); }
