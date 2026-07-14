@@ -22,8 +22,6 @@ namespace GaussianSplatting.Editor
         const string UiFontAssetPath = "Assets/VRChatGaussianSplatting/Resources/Fonts/NotoSansJP-VF.ttf";
         const string UiTextMeshProFontAssetPath = "Assets/VRChatGaussianSplatting/Resources/Fonts/NotoSansJP-VF TMP.asset";
         const string UiMaterialFolderPath = "Assets/VRChatGaussianSplatting/Resources/Materials";
-        const string SupersampledUiMaterialAssetPath = UiMaterialFolderPath + "/GaussianSplatUISupersampled.mat";
-        const string VrChatSupersampledUiShaderName = "VRChat/Mobile/Worlds/Supersampled UI";
         const string TmpTextShaderName = "TextMeshPro/Mobile/Distance Field SSD";
         const int UiTextMeshProPointSize = 64;
         const int UiTextMeshProAtlasPadding = 8;
@@ -31,8 +29,6 @@ namespace GaussianSplatting.Editor
         const UnityEngine.TextCore.LowLevel.GlyphRenderMode UiTextMeshProGlyphRenderMode = UnityEngine.TextCore.LowLevel.GlyphRenderMode.SDFAA_HINTED;
         const float UiTextMeshProBoldStyle = 1.5f;
 
-        static Type _cachedVrChatUiShapeType;
-        static Material _cachedSupersampledUiMaterial;
         static TMP_FontAsset _cachedUiTextMeshProFont;
         static bool _autoRefreshQueued = true;
 
@@ -192,7 +188,6 @@ namespace GaussianSplatting.Editor
             RectTransform canvasRect = canvasObject.GetComponent<RectTransform>();
             canvasRect.sizeDelta = new Vector2(1120.0f, 980.0f);
 
-            TryAddVrChatUiShape(canvasObject);
 
             CreateOpaqueBackgroundPlate(canvasObject.transform, canvasRect.sizeDelta);
 
@@ -289,7 +284,6 @@ namespace GaussianSplatting.Editor
             GameObject splatListPanel = CreateVerticalGroup("Splat List Panel", splatColumn.transform, new RectOffset(8, 8, 8, 8), 8.0f, TextAnchor.UpperLeft);
             Image splatListPanelImage = splatListPanel.AddComponent<Image>();
             splatListPanelImage.color = new Color(0.09f, 0.09f, 0.11f, 1.0f);
-            ApplySupersampledUiMaterial(splatListPanelImage);
             SetPreferredHeight(splatListPanel, splatListPanelHeight, 0.0f);
 
             GameObject splatScrollRow = CreateHorizontalGroup("Splat Scroll Controls", splatListPanel.transform, 8.0f, false);
@@ -323,66 +317,6 @@ namespace GaussianSplatting.Editor
             EditorUtility.SetDirty(generatedUi);
 
             if (select) Selection.activeGameObject = canvasObject;
-        }
-
-        static Type FindTypeInLoadedAssemblies(string fullTypeName, string shortTypeName)
-        {
-            Assembly[] assemblies = AppDomain.CurrentDomain.GetAssemblies();
-            for (int i = 0; i < assemblies.Length; i++)
-            {
-                Type resolvedType = assemblies[i].GetType(fullTypeName);
-                if (resolvedType != null)
-                {
-                    return resolvedType;
-                }
-            }
-
-            for (int i = 0; i < assemblies.Length; i++)
-            {
-                Type[] types;
-                try
-                {
-                    types = assemblies[i].GetTypes();
-                }
-                catch (ReflectionTypeLoadException exception)
-                {
-                    types = exception.Types;
-                }
-
-                if (types == null)
-                {
-                    continue;
-                }
-
-                for (int j = 0; j < types.Length; j++)
-                {
-                    Type candidateType = types[j];
-                    if (candidateType != null && candidateType.Name == shortTypeName)
-                    {
-                        return candidateType;
-                    }
-                }
-            }
-
-            return null;
-        }
-
-        static Type GetVrChatUiShapeType()
-        {
-            if (_cachedVrChatUiShapeType == null)
-            {
-                _cachedVrChatUiShapeType = FindTypeInLoadedAssemblies("VRC.SDK3.Components.VRCUiShape", "VRCUiShape") ?? FindTypeInLoadedAssemblies("VRC.SDKBase.VRC_UiShape", "VRC_UiShape");
-            }
-            return _cachedVrChatUiShapeType;
-        }
-
-        static void TryAddVrChatUiShape(GameObject targetObject)
-        {
-            Type vrChatUiShapeType = targetObject != null ? GetVrChatUiShapeType() : null;
-            if (vrChatUiShapeType != null && targetObject.GetComponent(vrChatUiShapeType) == null)
-            {
-                targetObject.AddComponent(vrChatUiShapeType);
-            }
         }
 
         static TMP_FontAsset GetUiTextMeshProFont()
@@ -543,34 +477,6 @@ namespace GaussianSplatting.Editor
             };
         }
 
-        static Material GetSupersampledUiMaterial()
-        {
-            if (_cachedSupersampledUiMaterial != null) return _cachedSupersampledUiMaterial;
-            EnsureFolderExists(UiMaterialFolderPath);
-            Material supersampledUiMaterial = AssetDatabase.LoadAssetAtPath<Material>(SupersampledUiMaterialAssetPath);
-            Shader supersampledUiShader = Shader.Find(VrChatSupersampledUiShaderName);
-            if (supersampledUiShader == null) return null;
-            if (supersampledUiMaterial == null)
-            {
-                supersampledUiMaterial = new Material(supersampledUiShader);
-                supersampledUiMaterial.name = "GaussianSplatUISupersampled";
-                AssetDatabase.CreateAsset(supersampledUiMaterial, SupersampledUiMaterialAssetPath);
-            }
-            else if (supersampledUiMaterial.shader != supersampledUiShader)
-            {
-                supersampledUiMaterial.shader = supersampledUiShader;
-                EditorUtility.SetDirty(supersampledUiMaterial);
-            }
-
-            _cachedSupersampledUiMaterial = supersampledUiMaterial;
-            return _cachedSupersampledUiMaterial;
-        }
-
-        static void ApplySupersampledUiMaterial(Graphic graphic)
-        {
-            if (graphic != null) graphic.material = GetSupersampledUiMaterial();
-        }
-
         static T AddGeneratedComponent<T>(GameObject targetObject, string undoLabel) where T : MonoBehaviour
         {
             Undo.RegisterCompleteObjectUndo(targetObject, undoLabel);
@@ -721,7 +627,6 @@ namespace GaussianSplatting.Editor
             RectTransform rectTransform = CreateRectTransform(objectName, parent, new Vector2(preferredWidth, 38.0f));
             Image image = rectTransform.gameObject.AddComponent<Image>();
             image.color = backgroundColor;
-            ApplySupersampledUiMaterial(image);
             Button button = rectTransform.gameObject.AddComponent<Button>();
             ColorBlock colors = button.colors;
             colors.normalColor = backgroundColor; colors.highlightedColor = backgroundColor * 1.1f; colors.pressedColor = backgroundColor * 0.85f;
@@ -735,7 +640,6 @@ namespace GaussianSplatting.Editor
             RectTransform labelRect = label.rectTransform;
             labelRect.anchorMin = Vector2.zero; labelRect.anchorMax = Vector2.one;
             labelRect.offsetMin = new Vector2(8.0f, 4.0f); labelRect.offsetMax = new Vector2(-8.0f, -4.0f);
-            TryAddVrChatUiShape(rectTransform.gameObject);
             return button;
         }
 
@@ -744,7 +648,6 @@ namespace GaussianSplatting.Editor
             RectTransform rectTransform = CreateRectTransform(objectName, parent, new Vector2(0.0f, 34.0f));
             Image background = rectTransform.gameObject.AddComponent<Image>();
             background.color = new Color(0.16f, 0.16f, 0.18f, 1.0f);
-            ApplySupersampledUiMaterial(background);
             Slider slider = rectTransform.gameObject.AddComponent<Slider>();
             slider.direction = Slider.Direction.LeftToRight; slider.minValue = minValue; slider.maxValue = maxValue; slider.wholeNumbers = wholeNumbers;
             LayoutElement layoutElement = rectTransform.gameObject.AddComponent<LayoutElement>();
@@ -757,7 +660,6 @@ namespace GaussianSplatting.Editor
             fill.offsetMin = Vector2.zero; fill.offsetMax = Vector2.zero;
             Image fillImage = fill.gameObject.AddComponent<Image>();
             fillImage.color = new Color(0.18f, 0.4f, 0.24f, 1.0f);
-            ApplySupersampledUiMaterial(fillImage);
             RectTransform handleSlideArea = CreateRectTransform("Handle Slide Area", rectTransform, Vector2.zero);
             handleSlideArea.anchorMin = Vector2.zero; handleSlideArea.anchorMax = Vector2.one;
             handleSlideArea.offsetMin = new Vector2(12.0f, 10.0f); handleSlideArea.offsetMax = new Vector2(-12.0f, -10.0f);
@@ -765,11 +667,9 @@ namespace GaussianSplatting.Editor
             handle.anchorMin = new Vector2(0.0f, 0.5f); handle.anchorMax = new Vector2(0.0f, 0.5f); handle.pivot = new Vector2(0.5f, 0.5f);
             Image handleImage = handle.gameObject.AddComponent<Image>();
             handleImage.color = new Color(0.86f, 0.86f, 0.9f, 1.0f);
-            ApplySupersampledUiMaterial(handleImage);
             slider.fillRect = fill;
             slider.handleRect = handle;
             slider.targetGraphic = handleImage;
-            TryAddVrChatUiShape(rectTransform.gameObject);
             return slider;
         }
 
