@@ -58,8 +58,23 @@ namespace GaussianSplatting
                 public TextureHandle grabTexture;
                 public RendererListHandle toSrgb;
                 public RendererListHandle toLinear;
+
+                // Render Graph pools PassData objects and hands them back without resetting fields,
+                // so these have to be cleared on every record. Leaving them to accumulate meant the
+                // second camera of a frame (Scene view alongside Game view) inherited the first
+                // camera's renderer lists and tried to execute them again:
+                //   "Trying to execute a RendererList that was already executed during this frame."
                 public readonly List<RendererListHandle> splatSegments = new List<RendererListHandle>();
                 public readonly List<RendererListHandle> alphaMasks = new List<RendererListHandle>();
+
+                public void Reset()
+                {
+                    splatSegments.Clear();
+                    alphaMasks.Clear();
+                    // Only assigned when this splat has alpha-mask passes; must not survive a record
+                    // where it does not.
+                    grabTexture = TextureHandle.nullHandle;
+                }
             }
 
             public override void RecordRenderGraph(RenderGraph renderGraph, ContextContainer frameData)
@@ -88,6 +103,7 @@ namespace GaussianSplatting
 
                 using (var builder = renderGraph.AddUnsafePass<PassData>("Gaussian Splats", out PassData passData))
                 {
+                    passData.Reset();
                     passData.cameraColor = resourceData.activeColorTexture;
                     passData.cameraDepth = resourceData.activeDepthTexture;
                     builder.UseTexture(passData.cameraColor, AccessFlags.ReadWrite);
