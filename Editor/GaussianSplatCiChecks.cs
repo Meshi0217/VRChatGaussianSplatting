@@ -58,6 +58,83 @@ namespace GaussianSplatting.Editor
             Debug.Log("GaussianSplatCiChecks: no shader errors.");
             EditorApplication.Exit(0);
         }
+
+        /// <summary>
+        /// Opens each example scene and reports whether it is actually playable: no missing scripts,
+        /// a camera, an EventSystem with an input module that works under the Input System package,
+        /// a PhysicsRaycaster for the click toggles, and UI buttons whose onClick actually points at
+        /// something. Grepping the YAML cannot answer any of this -- components are stored by script
+        /// GUID, not by name.
+        /// </summary>
+        public static void VerifyScenes()
+        {
+            string[] guids = AssetDatabase.FindAssets("t:Scene", new[] { SearchFolder });
+            bool failed = false;
+
+            foreach (string guid in guids)
+            {
+                string path = AssetDatabase.GUIDToAssetPath(guid);
+                UnityEngine.SceneManagement.Scene scene = UnityEditor.SceneManagement.EditorSceneManager.OpenScene(path, UnityEditor.SceneManagement.OpenSceneMode.Single);
+
+                int missingScripts = 0;
+                int buttons = 0;
+                int wiredButtons = 0;
+                bool hasCamera = false;
+                bool hasPhysicsRaycaster = false;
+                bool hasEventSystem = false;
+                bool hasInputModule = false;
+                bool hasLegacyInputModule = false;
+                int splatObjects = 0;
+                bool hasRenderer = false;
+
+                foreach (GameObject root in scene.GetRootGameObjects())
+                {
+                    foreach (Transform t in root.GetComponentsInChildren<Transform>(true))
+                    {
+                        missingScripts += GameObjectUtility.GetMonoBehavioursWithMissingScriptCount(t.gameObject);
+                    }
+
+                    hasCamera |= root.GetComponentInChildren<Camera>(true) != null;
+                    hasPhysicsRaycaster |= root.GetComponentInChildren<UnityEngine.EventSystems.PhysicsRaycaster>(true) != null;
+                    hasEventSystem |= root.GetComponentInChildren<UnityEngine.EventSystems.EventSystem>(true) != null;
+                    hasInputModule |= root.GetComponentInChildren<UnityEngine.InputSystem.UI.InputSystemUIInputModule>(true) != null;
+                    hasLegacyInputModule |= root.GetComponentInChildren<UnityEngine.EventSystems.StandaloneInputModule>(true) != null;
+                    hasRenderer |= root.GetComponentInChildren<GaussianSplatRenderer>(true) != null;
+                    splatObjects += root.GetComponentsInChildren<GaussianSplatObject>(true).Length;
+
+                    foreach (UnityEngine.UI.Button button in root.GetComponentsInChildren<UnityEngine.UI.Button>(true))
+                    {
+                        buttons++;
+                        for (int i = 0; i < button.onClick.GetPersistentEventCount(); i++)
+                        {
+                            if (button.onClick.GetPersistentTarget(i) != null && !string.IsNullOrEmpty(button.onClick.GetPersistentMethodName(i)))
+                            {
+                                wiredButtons++;
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                Debug.Log(
+                    "SCENE " + path +
+                    "\n  missing scripts: " + missingScripts +
+                    "\n  camera: " + hasCamera + ", PhysicsRaycaster: " + hasPhysicsRaycaster +
+                    "\n  EventSystem: " + hasEventSystem + ", InputSystemUIInputModule: " + hasInputModule + ", legacy StandaloneInputModule: " + hasLegacyInputModule +
+                    "\n  GaussianSplatRenderer: " + hasRenderer + ", GaussianSplatObjects: " + splatObjects +
+                    "\n  buttons: " + buttons + " (wired onClick: " + wiredButtons + ")");
+
+                if (missingScripts > 0) { Debug.LogError("FAIL " + path + ": " + missingScripts + " missing scripts"); failed = true; }
+                if (!hasCamera) { Debug.LogError("FAIL " + path + ": no camera"); failed = true; }
+                if (!hasEventSystem || !hasInputModule) { Debug.LogError("FAIL " + path + ": EventSystem/InputSystemUIInputModule missing"); failed = true; }
+                if (hasLegacyInputModule) { Debug.LogError("FAIL " + path + ": StandaloneInputModule throws under the Input System package"); failed = true; }
+                if (!hasPhysicsRaycaster) { Debug.LogError("FAIL " + path + ": no PhysicsRaycaster, 3D click toggles cannot fire"); failed = true; }
+                if (!hasRenderer) { Debug.LogError("FAIL " + path + ": no GaussianSplatRenderer"); failed = true; }
+                if (buttons > 0 && wiredButtons != buttons) { Debug.LogError("FAIL " + path + ": " + (buttons - wiredButtons) + " of " + buttons + " buttons have no onClick target"); failed = true; }
+            }
+
+            EditorApplication.Exit(failed ? 1 : 0);
+        }
     }
 }
 #endif

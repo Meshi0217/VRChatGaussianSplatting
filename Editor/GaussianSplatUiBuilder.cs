@@ -45,6 +45,21 @@ namespace GaussianSplatting.Editor
             EditorApplication.update += ProcessAutoRefresh;
         }
 
+        // The auto-refresh above only builds the UI for scenes that do not have one yet. Rebuilding
+        // an existing one needs an explicit entry point -- there was none before.
+        [MenuItem("Gaussian Splatting/Generate In-World UI")]
+        static void GenerateForActiveScene()
+        {
+            GaussianSplatRenderer renderer = GaussianSplatRenderer.FindExistingSceneRenderer(
+                UnityEditor.SceneManagement.EditorSceneManager.GetActiveScene());
+            if (renderer == null)
+            {
+                Debug.LogWarning("Gaussian Splatting: no GaussianSplatRenderer in the active scene.");
+                return;
+            }
+            Generate(renderer);
+        }
+
         static void QueueAutoRefresh() { _autoRefreshQueued = true; }
 
         static void ProcessAutoRefresh()
