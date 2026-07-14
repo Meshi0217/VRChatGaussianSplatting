@@ -6,6 +6,7 @@
 #pragma exclude_renderers gles
 #endif
 #pragma shader_feature_local _PRECOMPUTED_SORTING_ON
+#pragma multi_compile_instancing
 #pragma vertex vert
 #pragma fragment frag
 #ifndef GS_NO_GEOM

@@ -44,6 +44,7 @@ Shader "VRChatGaussianSplatting/GaussianSplatting"
 
         Pass
         {
+            Tags { "LightMode" = "GaussianSplat" }
             //Blend One OneMinusSrcAlpha //Back to front blending
             Blend OneMinusDstAlpha One //Front to back blending
             Cull Off

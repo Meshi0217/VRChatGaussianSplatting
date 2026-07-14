@@ -919,6 +919,7 @@ public partial class GaussianSplatRenderer : MonoBehaviour
 
     void SetRenderOrderOnMaterials(Material[] materials, int actualCount)
     {
+        GaussianSplatRuntimeRegistry.RegisterMaterials(materials);
         for (int i = 0; i < materials.Length; i++)
         {
             Material material = materials[i];
@@ -981,7 +982,15 @@ public partial class GaussianSplatRenderer : MonoBehaviour
             Debug.LogError("ComputeKeyValues material is not assigned on the RadixSort component.");
             return false;
         }
-        return IsCombinedRenderingMode() ? UpdateCombinedBinding() : UpdateSingleBinding();
+        // Both binding paths funnel their material arrays through SetRenderOrderOnMaterials, which
+        // is where the alpha-mask render queues are collected for GaussianSplatRendererFeature.
+        GaussianSplatRuntimeRegistry.BeginBinding();
+        bool bound = IsCombinedRenderingMode() ? UpdateCombinedBinding() : UpdateSingleBinding();
+        if (bound)
+        {
+            GaussianSplatRuntimeRegistry.EndBinding();
+        }
+        return bound;
     }
 
     void OnScreenSortPublished()
@@ -1068,6 +1077,7 @@ public partial class GaussianSplatRenderer : MonoBehaviour
     void OnDisable()
     {
         RenderPipelineManager.beginCameraRendering -= OnBeginCameraRendering;
+        GaussianSplatRuntimeRegistry.Clear();
     }
 
     // The sorted render order lives in global material state, so it has to be rebuilt for

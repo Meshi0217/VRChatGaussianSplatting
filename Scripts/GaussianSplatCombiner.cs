@@ -347,6 +347,7 @@ public partial class GaussianSplatCombiner : MonoBehaviour
 
     void SetRenderOrderOnMaterials(Material[] materials, int actualCount, RenderTexture splatRenderOrder)
     {
+        GaussianSplatRuntimeRegistry.RegisterMaterials(materials);
         for (int i = 0; i < materials.Length; i++)
         {
             Material material = materials[i];
