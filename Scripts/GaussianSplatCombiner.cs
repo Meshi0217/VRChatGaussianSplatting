@@ -1,14 +1,10 @@
 using UnityEngine;
-using UdonSharp;
-using VRC.SDKBase;
-using VRC.SDK3.Rendering;
 
-#if UNITY_EDITOR && !COMPILER_UDONSHARP
+#if UNITY_EDITOR
 using System;
 using System.Collections.Generic;
 using UnityEditor;
 using UnityEngine.SceneManagement;
-using UdonSharpEditor;
 #endif
 
 namespace GaussianSplatting
@@ -19,8 +15,7 @@ namespace GaussianSplatting
 /// behaves like a single GaussianSplatObject (SH0) so the renderer can drive it through the same
 /// single-splat sort/render path. The renderer delegates all combine work to this component.
 /// </summary>
-[UdonBehaviourSyncMode(BehaviourSyncMode.None)]
-public partial class GaussianSplatCombiner : UdonSharpBehaviour
+public partial class GaussianSplatCombiner : MonoBehaviour
 {
     const int COMBINED_SOURCE_BATCH_SIZE_DESKTOP = 8;
     const int COMBINED_SOURCE_BATCH_SIZE_GLES = 1;
@@ -49,7 +44,7 @@ public partial class GaussianSplatCombiner : UdonSharpBehaviour
     [System.NonSerialized] float _lodSplatTargetScale = 1.0f;
     [System.NonSerialized] float _lodDirectionalBias = 2.0f;
     [System.NonSerialized] int[] _lodOutputCounts;
-#if UNITY_EDITOR && !COMPILER_UDONSHARP
+#if UNITY_EDITOR
     static readonly Dictionary<GaussianSplatCombiner, int> _editorReadbackRenderedSplatCounts = new Dictionary<GaussianSplatCombiner, int>();
     static readonly Dictionary<GaussianSplatCombiner, int> _editorReadbackReservedSplatCounts = new Dictionary<GaussianSplatCombiner, int>();
     static readonly Dictionary<GaussianSplatCombiner, float> _editorReadbackAlphas = new Dictionary<GaussianSplatCombiner, float>();
@@ -88,7 +83,7 @@ public partial class GaussianSplatCombiner : UdonSharpBehaviour
 
     GaussianSplatRenderer GetOwnerRenderer()
     {
-#if UNITY_EDITOR && !COMPILER_UDONSHARP
+#if UNITY_EDITOR
         if (gaussianSplatRenderer == null || gaussianSplatRenderer.gameObject == null || gaussianSplatRenderer.gameObject.scene != gameObject.scene)
         {
             gaussianSplatRenderer = GaussianSplatRenderer.FindExistingSceneRenderer(gameObject.scene);
@@ -180,7 +175,7 @@ public partial class GaussianSplatCombiner : UdonSharpBehaviour
             return new Material[0];
         }
 
-#if UNITY_EDITOR && !COMPILER_UDONSHARP
+#if UNITY_EDITOR
         if (!Application.isPlaying)
         {
             return renderer.sharedMaterials;
@@ -212,7 +207,7 @@ public partial class GaussianSplatCombiner : UdonSharpBehaviour
 
     bool EnsureLODMaterials()
     {
-#if UNITY_EDITOR && !COMPILER_UDONSHARP
+#if UNITY_EDITOR
         if (lodChunkSelectMaterial == null)
         {
             Shader shader = Shader.Find("Hidden/GaussianSplatting/LODChunkSelect");
@@ -263,7 +258,7 @@ public partial class GaussianSplatCombiner : UdonSharpBehaviour
             return true;
         }
 
-#if UNITY_EDITOR && !COMPILER_UDONSHARP
+#if UNITY_EDITOR
         if (lodChunkSelection != null && lodChunkSelection.IsCreated())
         {
             lodChunkSelection.Release();
@@ -294,7 +289,7 @@ public partial class GaussianSplatCombiner : UdonSharpBehaviour
 #endif
     }
 
-#if UNITY_EDITOR && !COMPILER_UDONSHARP
+#if UNITY_EDITOR
     RenderTexture CreateAlphaStateRT(string name)
     {
         RenderTexture texture = new RenderTexture(1, 1, 0, RenderTextureFormat.ARGBFloat, RenderTextureReadWrite.Linear);
@@ -328,7 +323,7 @@ public partial class GaussianSplatCombiner : UdonSharpBehaviour
 
     int GetCombinedSourceBatchSize()
     {
-#if UNITY_EDITOR && !COMPILER_UDONSHARP
+#if UNITY_EDITOR
         UnityEngine.Rendering.GraphicsDeviceType graphicsDevice = SystemInfo.graphicsDeviceType;
         return graphicsDevice == UnityEngine.Rendering.GraphicsDeviceType.OpenGLES2 || graphicsDevice == UnityEngine.Rendering.GraphicsDeviceType.OpenGLES3
             ? COMBINED_SOURCE_BATCH_SIZE_GLES
@@ -342,26 +337,12 @@ public partial class GaussianSplatCombiner : UdonSharpBehaviour
 
     void Blit(Texture source, RenderTexture target, bool useEditorOps)
     {
-#if UNITY_EDITOR && !COMPILER_UDONSHARP
-        if (useEditorOps)
-        {
-            Graphics.Blit(source, target);
-            return;
-        }
-#endif
-        VRCGraphics.Blit(source, target);
+        Graphics.Blit(source, target);
     }
 
     void Blit(RenderTexture target, Material material, int pass, bool useEditorOps)
     {
-#if UNITY_EDITOR && !COMPILER_UDONSHARP
-        if (useEditorOps)
-        {
-            Graphics.Blit(null, target, material, pass);
-            return;
-        }
-#endif
-        VRCGraphics.Blit(null, target, material, pass);
+        Graphics.Blit(null, target, material, pass);
     }
 
     void SetRenderOrderOnMaterials(Material[] materials, int actualCount, RenderTexture splatRenderOrder, RenderTexture splatRenderOrderPhoto)
@@ -656,7 +637,7 @@ public partial class GaussianSplatCombiner : UdonSharpBehaviour
         lodAlphaStateScratch = swap;
     }
 
-#if UNITY_EDITOR && !COMPILER_UDONSHARP
+#if UNITY_EDITOR
     int ReadbackLODActualSplatCount(GaussianSplatLODObject lodObject, out float alpha)
     {
         alpha = 0.0f;
@@ -785,7 +766,7 @@ public partial class GaussianSplatCombiner : UdonSharpBehaviour
                 {
                     _combinedActualSplatCount = 0;
                     SetRendererEnabled(false);
-#if !UNITY_EDITOR || COMPILER_UDONSHARP
+#if !UNITY_EDITOR
                     Debug.LogError("Combined Gaussian splat resources are too small for the active scene splats. Refresh the renderer resources in the editor.");
 #endif
                     return false;
@@ -823,7 +804,7 @@ public partial class GaussianSplatCombiner : UdonSharpBehaviour
         _sceneLods = sceneLods != null ? sceneLods : new GaussianSplatLODObject[0];
         ResetLODOutputCounts(_sceneLods.Length);
         float lodTargetScale = lodSplatBudget > 0 ? Mathf.Clamp(_lodSplatTargetScale, 0.01f, 1.0f) : 1.0f;
-#if UNITY_EDITOR && !COMPILER_UDONSHARP
+#if UNITY_EDITOR
         SetEditorReadback(0, 0, 0.0f);
         for (int i = 0; i < _sceneLods.Length; i++)
         {
@@ -835,7 +816,7 @@ public partial class GaussianSplatCombiner : UdonSharpBehaviour
 #endif
         if (combinedSortedRenderer == null || combinedPositions == null || combinedRotations == null || combinedScales == null || combinedColors == null || combinedColorsCamera == null || combineDataMaterial == null)
         {
-#if !UNITY_EDITOR || COMPILER_UDONSHARP
+#if !UNITY_EDITOR
             Debug.LogError("Combined rendering mode is missing generated resources. Refresh the GaussianSplatRenderer in the editor.");
 #endif
             return false;
@@ -882,7 +863,7 @@ public partial class GaussianSplatCombiner : UdonSharpBehaviour
             }
         }
 
-#if UNITY_EDITOR && !COMPILER_UDONSHARP
+#if UNITY_EDITOR
         int editorReadbackCount = combinedOffset;
         float editorReadbackAlpha = 0.0f;
 #endif
@@ -912,7 +893,7 @@ public partial class GaussianSplatCombiner : UdonSharpBehaviour
             if (RunLODChunkSelection(lodObject, lodCameraPos, lodCameraForward, objectSelectionTarget, adaptLodSelection, useEditorOps))
             {
                 int lodOutputCount = objectHardBudget;
-#if UNITY_EDITOR && !COMPILER_UDONSHARP
+#if UNITY_EDITOR
                 if (useEditorOps)
                 {
                     int lodActualCount = ReadbackLODActualSplatCount(lodObject, out float lodAlpha);
@@ -949,11 +930,11 @@ public partial class GaussianSplatCombiner : UdonSharpBehaviour
             return false;
         }
         _combinedActualSplatCount = combinedOffset;
-#if UNITY_EDITOR && !COMPILER_UDONSHARP
+#if UNITY_EDITOR
         SetEditorReadback(useEditorOps ? editorReadbackCount : combinedOffset, combinedOffset, useEditorOps ? editorReadbackAlpha : 0.0f);
 #endif
 
-#if UNITY_EDITOR && !COMPILER_UDONSHARP
+#if UNITY_EDITOR
         if (useEditorOps)
         {
             return true;
@@ -1059,7 +1040,7 @@ public partial class GaussianSplatCombiner : UdonSharpBehaviour
         return true;
     }
 
-#if UNITY_EDITOR && !COMPILER_UDONSHARP
+#if UNITY_EDITOR
     void SetEditorReadback(int renderedSplatCount, int reservedSplatCount, float alpha)
     {
         _editorReadbackRenderedSplatCounts[this] = renderedSplatCount;

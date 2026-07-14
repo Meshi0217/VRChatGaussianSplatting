@@ -4,8 +4,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
 using TMPro;
-using UdonSharp;
-using UdonSharpEditor;
 using UnityEditor;
 using UnityEditor.Events;
 using UnityEngine;
@@ -188,7 +186,7 @@ namespace GaussianSplatting.Editor
             panelRect.pivot = new Vector2(0.5f, 0.5f);
             panelRect.sizeDelta = new Vector2(1120.0f, 0.0f);
 
-            GaussianSplatRendererUI generatedUi = AddGeneratedUdonSharpComponent<GaussianSplatRendererUI>(canvasObject, "Add Gaussian Splat Renderer UI");
+            GaussianSplatRendererUI generatedUi = AddGeneratedComponent<GaussianSplatRendererUI>(canvasObject, "Add Gaussian Splat Renderer UI");
 
             GameObject bodyRow = CreateHorizontalGroup("Body Row", panelObject.transform, 18.0f, false);
             SetPreferredHeight(bodyRow, 900.0f, 0.0f);
@@ -206,10 +204,10 @@ namespace GaussianSplatting.Editor
                 GameObject row = CreateHorizontalGroup(baseName + " Row", settingsColumn.transform, 8.0f, false);
                 label = CreateTextElement(baseName + " Label", row.transform, labelText, 16, TextAnchor.MiddleLeft);
                 SetPreferredWidth(label.gameObject, 210.0f, 1.0f);
-                AddUdonSharpButtonEvent(CreateButtonElement(baseName + " Down", row.transform, "-", decrementColor, 42.0f, 0.0f), generatedUi, downEvent);
+                AddButtonEvent(CreateButtonElement(baseName + " Down", row.transform, "-", decrementColor, 42.0f, 0.0f), generatedUi, downEvent);
                 value = CreateTextElement(baseName + " Value", row.transform, valueText, 16, TextAnchor.MiddleCenter);
                 SetPreferredWidth(value.gameObject, 72.0f, 0.0f);
-                AddUdonSharpButtonEvent(CreateButtonElement(baseName + " Up", row.transform, "+", incrementColor, 42.0f, 0.0f), generatedUi, upEvent);
+                AddButtonEvent(CreateButtonElement(baseName + " Up", row.transform, "+", incrementColor, 42.0f, 0.0f), generatedUi, upEvent);
             }
             void CreateToggleSetting(string baseName, string labelText, string buttonLabel, string eventName, out TextMeshProUGUI label, out Button button)
             {
@@ -217,7 +215,7 @@ namespace GaussianSplatting.Editor
                 label = CreateTextElement(baseName + " Label", row.transform, labelText, 16, TextAnchor.MiddleLeft);
                 SetPreferredWidth(label.gameObject, 210.0f, 1.0f);
                 button = CreateButtonElement(baseName + " Button", row.transform, buttonLabel, inactiveButtonColor, 72.0f, 0.0f);
-                AddUdonSharpButtonEvent(button, generatedUi, eventName);
+                AddButtonEvent(button, generatedUi, eventName);
             }
             void CreateSliderSetting(string baseName, string labelText, float minValue, float maxValue, bool wholeNumbers, string valueText, float labelFlexibleWidth, out TextMeshProUGUI label, out Slider slider, out TextMeshProUGUI value)
             {
@@ -253,18 +251,18 @@ namespace GaussianSplatting.Editor
             generatedUi.qualityLowButton = CreateButtonElement("Quality Low Button", qualityRow.transform, "Low", new Color(0.2f, 0.2f, 0.24f, 1.0f), 0.0f, 1.0f);
             generatedUi.qualityMediumButton = CreateButtonElement("Quality Medium Button", qualityRow.transform, "Medium", new Color(0.2f, 0.2f, 0.24f, 1.0f), 0.0f, 1.0f);
             generatedUi.qualityHighButton = CreateButtonElement("Quality High Button", qualityRow.transform, "High", new Color(0.2f, 0.2f, 0.24f, 1.0f), 0.0f, 1.0f);
-            AddUdonSharpButtonEvent(generatedUi.qualityVeryLowButton, generatedUi, nameof(GaussianSplatRendererUI.SetQualityVeryLow));
-            AddUdonSharpButtonEvent(generatedUi.qualityLowButton, generatedUi, nameof(GaussianSplatRendererUI.SetQualityLow));
-            AddUdonSharpButtonEvent(generatedUi.qualityMediumButton, generatedUi, nameof(GaussianSplatRendererUI.SetQualityMedium));
-            AddUdonSharpButtonEvent(generatedUi.qualityHighButton, generatedUi, nameof(GaussianSplatRendererUI.SetQualityHigh));
+            AddButtonEvent(generatedUi.qualityVeryLowButton, generatedUi, nameof(GaussianSplatRendererUI.SetQualityVeryLow));
+            AddButtonEvent(generatedUi.qualityLowButton, generatedUi, nameof(GaussianSplatRendererUI.SetQualityLow));
+            AddButtonEvent(generatedUi.qualityMediumButton, generatedUi, nameof(GaussianSplatRendererUI.SetQualityMedium));
+            AddButtonEvent(generatedUi.qualityHighButton, generatedUi, nameof(GaussianSplatRendererUI.SetQualityHigh));
             generatedUi.languageSectionText = CreateTextElement("Language Section", settingsColumn.transform, "Language", 18, TextAnchor.MiddleLeft);
             GameObject languageRow = CreateHorizontalGroup("Language Row", settingsColumn.transform, 8.0f, false);
             Button englishLanguageButton = CreateButtonElement("English Button", languageRow.transform, "English", new Color(0.2f, 0.2f, 0.24f, 1.0f), 0.0f, 1.0f);
             Button japaneseLanguageButton = CreateButtonElement("Japanese Button", languageRow.transform, "日本語", new Color(0.2f, 0.2f, 0.24f, 1.0f), 0.0f, 1.0f);
             generatedUi.englishLanguageButton = englishLanguageButton;
             generatedUi.japaneseLanguageButton = japaneseLanguageButton;
-            AddUdonSharpButtonEvent(englishLanguageButton, generatedUi, nameof(GaussianSplatRendererUI.SetLanguageEnglish));
-            AddUdonSharpButtonEvent(japaneseLanguageButton, generatedUi, nameof(GaussianSplatRendererUI.SetLanguageJapanese));
+            AddButtonEvent(englishLanguageButton, generatedUi, nameof(GaussianSplatRendererUI.SetLanguageEnglish));
+            AddButtonEvent(japaneseLanguageButton, generatedUi, nameof(GaussianSplatRendererUI.SetLanguageJapanese));
 
             const float splatListPanelHeight = 840.0f;
             const float splatListPanelSpacing = 8.0f;
@@ -284,8 +282,8 @@ namespace GaussianSplatting.Editor
             Button scrollDownButton = CreateButtonElement("Splat Scroll Down", splatScrollRow.transform, "Down", new Color(0.15f, 0.24f, 0.36f, 1.0f), 96.0f, 0.0f);
             generatedUi.splatScrollUpButton = scrollUpButton;
             generatedUi.splatScrollDownButton = scrollDownButton;
-            AddUdonSharpButtonEvent(scrollUpButton, generatedUi, nameof(GaussianSplatRendererUI.ScrollSplatListUp));
-            AddUdonSharpButtonEvent(scrollDownButton, generatedUi, nameof(GaussianSplatRendererUI.ScrollSplatListDown));
+            AddButtonEvent(scrollUpButton, generatedUi, nameof(GaussianSplatRendererUI.ScrollSplatListUp));
+            AddButtonEvent(scrollDownButton, generatedUi, nameof(GaussianSplatRendererUI.ScrollSplatListDown));
 
             GameObject splatButtonContainer = CreateVerticalGroup("Splat Button Container", splatListPanel.transform, new RectOffset(0, 0, 0, 0), 8.0f, TextAnchor.UpperLeft);
 
@@ -299,7 +297,7 @@ namespace GaussianSplatting.Editor
                 Button slotButton = CreateButtonElement("Splat Slot " + slotIndex, splatButtonContainer.transform, string.Empty, new Color(0.2f, 0.2f, 0.24f, 1.0f), 0.0f, 1.0f);
                 SetPreferredHeight(slotButton.gameObject, splatSlotButtonHeight, 0.0f);
                 splatButtons.Add(slotButton);
-                AddUdonSharpButtonEvent(slotButton, generatedUi, "SelectSplatSlot" + slotIndex);
+                AddButtonEvent(slotButton, generatedUi, "SelectSplatSlot" + slotIndex);
             }
 
             generatedUi.splatButtons = splatButtons.ToArray();
@@ -308,11 +306,6 @@ namespace GaussianSplatting.Editor
             EditorUtility.SetDirty(canvasObject);
             EditorUtility.SetDirty(renderer);
             EditorUtility.SetDirty(generatedUi);
-            Component generatedUiBacking = GetBackingUdonBehaviour(generatedUi);
-            if (generatedUiBacking != null)
-            {
-                EditorUtility.SetDirty(generatedUiBacking);
-            }
 
             if (select) Selection.activeGameObject = canvasObject;
         }
@@ -563,18 +556,10 @@ namespace GaussianSplatting.Editor
             if (graphic != null) graphic.material = GetSupersampledUiMaterial();
         }
 
-        static T AddGeneratedUdonSharpComponent<T>(GameObject targetObject, string undoLabel) where T : UdonSharpBehaviour
+        static T AddGeneratedComponent<T>(GameObject targetObject, string undoLabel) where T : MonoBehaviour
         {
             Undo.RegisterCompleteObjectUndo(targetObject, undoLabel);
-            return targetObject.AddUdonSharpComponent<T>();
-        }
-
-        static Component GetBackingUdonBehaviour(UdonSharpBehaviour proxyBehaviour)
-        {
-            if (proxyBehaviour == null) return null;
-            MethodInfo method = typeof(UdonSharpEditorUtility).GetMethod("GetBackingUdonBehaviour", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
-            if (method == null) return null;
-            return method.Invoke(null, new object[] { proxyBehaviour }) as Component;
+            return Undo.AddComponent<T>(targetObject);
         }
 
         static void EnsureFolderExists(string folderPath)
@@ -592,16 +577,20 @@ namespace GaussianSplatting.Editor
             }
         }
 
-        static void AddUdonSharpButtonEvent(Button button, UdonSharpBehaviour targetBehaviour, string eventName)
+        // Wires the button straight to a parameterless public method on the behaviour. Udon needed a
+        // SendCustomEvent(string) indirection here; a plain persistent listener replaces it.
+        static void AddButtonEvent(Button button, MonoBehaviour targetBehaviour, string methodName)
         {
-            if (button == null || targetBehaviour == null || string.IsNullOrEmpty(eventName)) return;
-            Component backingBehaviour = GetBackingUdonBehaviour(targetBehaviour);
-            if (backingBehaviour == null) return;
-            MethodInfo sendCustomEventMethod = backingBehaviour.GetType().GetMethod("SendCustomEvent", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic, null, new[] { typeof(string) }, null);
-            if (sendCustomEventMethod == null) return;
-            UnityAction<string> sendCustomEvent = (UnityAction<string>)Delegate.CreateDelegate(typeof(UnityAction<string>), backingBehaviour, sendCustomEventMethod);
-            UnityEventTools.AddStringPersistentListener(button.onClick, sendCustomEvent, eventName);
-            EditorUtility.SetDirty(backingBehaviour);
+            if (button == null || targetBehaviour == null || string.IsNullOrEmpty(methodName)) return;
+            MethodInfo method = targetBehaviour.GetType().GetMethod(methodName, BindingFlags.Instance | BindingFlags.Public);
+            if (method == null || method.ReturnType != typeof(void) || method.GetParameters().Length != 0)
+            {
+                Debug.LogWarning("GaussianSplatUiBuilder: no public void " + methodName + "() on " + targetBehaviour.GetType().Name + "; button left unwired.");
+                return;
+            }
+            UnityAction action = (UnityAction)Delegate.CreateDelegate(typeof(UnityAction), targetBehaviour, method);
+            UnityEventTools.AddVoidPersistentListener(button.onClick, action);
+            EditorUtility.SetDirty(targetBehaviour);
         }
 
         static Material CreateOpaqueBackgroundMaterial()

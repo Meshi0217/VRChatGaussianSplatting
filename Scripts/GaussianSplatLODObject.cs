@@ -1,15 +1,13 @@
 ﻿// VRCGS_LOD_PLACEHOLDER
 using UnityEngine;
-using UdonSharp;
 
-#if UNITY_EDITOR && !COMPILER_UDONSHARP
+#if UNITY_EDITOR
 using UnityEditor;
 #endif
 
 namespace GaussianSplatting
 {
-    [UdonBehaviourSyncMode(BehaviourSyncMode.None)]
-    public class GaussianSplatLODObject : UdonSharpBehaviour
+    public class GaussianSplatLODObject : MonoBehaviour
     {
         public const float MAX_LOD_ALPHA_LOG2 = 100.0f;
         [SerializeField] public GaussianSplatRenderer gaussianSplatRenderer;
@@ -57,7 +55,7 @@ namespace GaussianSplatting
         public Vector4 GetFileSHRange(int fileIndex) { return Vector4.one; }
         public int GetMaxLOD0SplatCount() { return 0; }
         public string GetDisplayName() { return !string.IsNullOrEmpty(splatName) ? splatName : gameObject.name; }
-#if UNITY_EDITOR && !COMPILER_UDONSHARP
+#if UNITY_EDITOR
         void Reset() { gaussianSplatRenderer = GaussianSplatRenderer.FindExistingSceneRenderer(gameObject.scene); }
         void OnValidate() { GaussianSplatRenderer.RequestEditorRefresh(); }
         public bool TryGetLocalBounds(out Bounds bounds) { bounds = new Bounds(Vector3.zero, Vector3.zero); return false; }

@@ -6,7 +6,6 @@ using UnityEditor.Build.Reporting;
 using UnityEngine;
 using UnityEngine.Rendering;
 using UnityEngine.SceneManagement;
-using UdonSharpEditor;
 
 namespace GaussianSplatting.Editor
 {
@@ -71,7 +70,6 @@ namespace GaussianSplatting.Editor
                 {
                     GaussianSplatRenderer renderer = renderers[rendererIndex];
                     renderer.SetQualityLow();
-                    UdonSharpEditorUtility.CopyProxyToUdon(renderer);
                 }
             }
         }

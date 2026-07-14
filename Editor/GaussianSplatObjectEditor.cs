@@ -2,7 +2,6 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
-using UdonSharpEditor;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.Profiling;
@@ -60,8 +59,6 @@ namespace GaussianSplatting.Editor
 
         public override void OnInspectorGUI()
         {
-            DrawUdonSharpHeader();
-
             serializedObject.Update();
 
             DrawSettingsGroup(GSEditorText.T("References", "参照"), DrawReferenceFields);
@@ -88,7 +85,6 @@ namespace GaussianSplatting.Editor
             serializedObject.ApplyModifiedProperties();
 
             EditorGUILayout.Space();
-            DrawUdonSharpUtilities();
         }
 
         void DrawReferenceFields()
@@ -436,30 +432,6 @@ namespace GaussianSplatting.Editor
             EditorGUILayout.LabelField(title, EditorStyles.boldLabel);
             drawContents();
             EditorGUILayout.EndVertical();
-        }
-
-        void DrawUdonSharpHeader()
-        {
-            if (targets != null && targets.Length > 1)
-            {
-                UdonSharpGUI.DrawDefaultUdonSharpBehaviourHeader(targets);
-            }
-            else
-            {
-                UdonSharpGUI.DrawDefaultUdonSharpBehaviourHeader(target);
-            }
-        }
-
-        void DrawUdonSharpUtilities()
-        {
-            if (targets != null && targets.Length > 1)
-            {
-                UdonSharpGUI.DrawUtilities(targets);
-            }
-            else
-            {
-                UdonSharpGUI.DrawUtilities(target);
-            }
         }
     }
 }

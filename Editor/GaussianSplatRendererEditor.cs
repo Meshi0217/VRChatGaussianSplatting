@@ -1,6 +1,5 @@
 #if UNITY_EDITOR
 using GaussianSplatting;
-using UdonSharpEditor;
 using UnityEditor;
 using UnityEngine;
 
@@ -20,7 +19,6 @@ namespace GaussianSplatting.Editor
         SerializedProperty _combinedLodTargetScale;
         SerializedProperty _combinedLodDirectionalBias;
         SerializedProperty _debugDrawLodGrid;
-        SerializedProperty _blockNonMasterGlobalChanges;
 
         SerializedProperty _overrideMaterialProperties;
         SerializedProperty _overrideRenderQueue;
@@ -53,7 +51,6 @@ namespace GaussianSplatting.Editor
             _combinedLodTargetScale = serializedObject.FindProperty("combinedLodTargetScale");
             _combinedLodDirectionalBias = serializedObject.FindProperty("combinedLodDirectionalBias");
             _debugDrawLodGrid = serializedObject.FindProperty("debugDrawLodGrid");
-            _blockNonMasterGlobalChanges = serializedObject.FindProperty("blockNonMasterGlobalChanges");
 
             _overrideMaterialProperties = serializedObject.FindProperty("overrideMaterialProperties");
             _overrideRenderQueue = serializedObject.FindProperty("overrideRenderQueue");
@@ -77,8 +74,6 @@ namespace GaussianSplatting.Editor
 
         public override void OnInspectorGUI()
         {
-            DrawUdonSharpHeader();
-
             serializedObject.Update();
 
             DrawSettingsGroup(GSEditorText.T("Rendering Settings", "表示設定"), DrawRenderingSettings);
@@ -102,7 +97,6 @@ namespace GaussianSplatting.Editor
             }
 
             EditorGUILayout.Space();
-            DrawUdonSharpUtilities();
         }
 
         void DrawRenderingSettings()
@@ -258,7 +252,6 @@ namespace GaussianSplatting.Editor
         {
             EditorGUILayout.IntSlider(_requestedSHBand, 0, 3, GSEditorText.C("Requested SH Band", "要求 SH バンド"));
             EditorGUILayout.PropertyField(_useVrcLightVolumes, GSEditorText.C("Use VRC Light Volumes", "VRC Light Volumes を使用"));
-            EditorGUILayout.PropertyField(_blockNonMasterGlobalChanges, GSEditorText.C("Block Non-Master Global UI", "非マスターの共有 UI 変更をブロック"));
             using (new EditorGUI.DisabledScope(!_useVrcLightVolumes.boolValue))
             {
                 EditorGUILayout.Slider(_lightVolumeIntensity, 0.0f, 10.0f, GSEditorText.C("Light Volume Intensity", "ライトボリューム強度"));
@@ -329,30 +322,6 @@ namespace GaussianSplatting.Editor
             EditorGUILayout.LabelField(title, EditorStyles.boldLabel);
             drawContents();
             EditorGUILayout.EndVertical();
-        }
-
-        void DrawUdonSharpHeader()
-        {
-            if (targets != null && targets.Length > 1)
-            {
-                UdonSharpGUI.DrawDefaultUdonSharpBehaviourHeader(targets);
-            }
-            else
-            {
-                UdonSharpGUI.DrawDefaultUdonSharpBehaviourHeader(target);
-            }
-        }
-
-        void DrawUdonSharpUtilities()
-        {
-            if (targets != null && targets.Length > 1)
-            {
-                UdonSharpGUI.DrawUtilities(targets);
-            }
-            else
-            {
-                UdonSharpGUI.DrawUtilities(target);
-            }
         }
     }
 }

@@ -1,5 +1,5 @@
 
-#if UNITY_EDITOR && !COMPILER_UDONSHARP
+#if UNITY_EDITOR
 using Unity.Mathematics;
 
 namespace GaussianSplatting.Runtime

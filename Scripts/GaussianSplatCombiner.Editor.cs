@@ -1,18 +1,15 @@
-#if UNITY_EDITOR && !COMPILER_UDONSHARP
+#if UNITY_EDITOR
 using System;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEditor;
 using UnityEngine.SceneManagement;
-using UdonSharp;
-using UdonSharpEditor;
 
 namespace GaussianSplatting
 {
 
 // Editor-only resource management, scene wiring, and combined-hierarchy bookkeeping for
-// GaussianSplatCombiner. Kept in a partial file so the runtime behaviour stays small; the whole
-// file is excluded from Udon compilation via the preprocessor guard above.
+// GaussianSplatCombiner. Kept in a partial file so the runtime behaviour stays small.
 public partial class GaussianSplatCombiner
 {
     static bool EnsureGeneratedObjectEditable(GameObject generatedObject)
@@ -184,17 +181,7 @@ public partial class GaussianSplatCombiner
         return combinedObject;
     }
 
-    static bool HasValidBackingProgram(GaussianSplatCombiner combiner)
-    {
-        if (combiner == null)
-        {
-            return false;
-        }
-
-        var backingBehaviour = UdonSharpEditorUtility.GetBackingUdonBehaviour(combiner);
-        return backingBehaviour != null && backingBehaviour.programSource != null;
-    }
-
+    // Keeps a single combiner on the combined object; duplicates are a leftover from older scenes.
     static GaussianSplatCombiner CleanupCombinedBehaviours(GameObject combinedObject)
     {
         if (combinedObject == null)
@@ -203,54 +190,16 @@ public partial class GaussianSplatCombiner
         }
 
         GaussianSplatCombiner[] combiners = combinedObject.GetComponents<GaussianSplatCombiner>();
-        GaussianSplatCombiner preferredCombiner = null;
-        for (int i = 0; i < combiners.Length; i++)
+        GaussianSplatCombiner preferredCombiner = combiners.Length > 0 ? combiners[0] : null;
+        for (int i = 1; i < combiners.Length; i++)
         {
-            if (HasValidBackingProgram(combiners[i]))
-            {
-                preferredCombiner = combiners[i];
-                break;
-            }
-        }
-        if (preferredCombiner == null && combiners.Length > 0 && HasValidBackingProgram(combiners[combiners.Length - 1]))
-        {
-            preferredCombiner = combiners[combiners.Length - 1];
-        }
-        for (int i = 0; i < combiners.Length; i++)
-        {
-            if (combiners[i] == null)
-            {
-                continue;
-            }
-            if (combiners[i] != preferredCombiner)
+            if (combiners[i] != null)
             {
                 Undo.DestroyObjectImmediate(combiners[i]);
             }
         }
 
-        VRC.Udon.UdonBehaviour[] udonBehaviours = combinedObject.GetComponents<VRC.Udon.UdonBehaviour>();
-        for (int i = 0; i < udonBehaviours.Length; i++)
-        {
-            if (udonBehaviours[i] == null)
-            {
-                continue;
-            }
-
-            UdonSharp.UdonSharpBehaviour proxyBehaviour = UdonSharpEditorUtility.GetProxyBehaviour(udonBehaviours[i]);
-            if (udonBehaviours[i].programSource == null || !(proxyBehaviour is GaussianSplatCombiner))
-            {
-                Undo.DestroyObjectImmediate(udonBehaviours[i]);
-            }
-        }
-
-        return preferredCombiner != null && HasValidBackingProgram(preferredCombiner) ? preferredCombiner : null;
-    }
-
-    static void RefreshCombinerProgramAssetLookup()
-    {
-        AssetDatabase.ImportAsset("Assets/VRChatGaussianSplatting/Scripts/GaussianSplatCombiner.asset", ImportAssetOptions.ForceUpdate | ImportAssetOptions.ForceSynchronousImport);
-        typeof(UdonSharp.UdonSharpProgramAsset).GetMethod("ClearProgramAssetCache", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)?.Invoke(null, null);
-        typeof(UdonSharpEditorUtility).GetMethod("ResetCaches", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)?.Invoke(null, null);
+        return preferredCombiner;
     }
 
     public static GaussianSplatCombiner EnsureSceneCombiner(GaussianSplatRenderer owner)
@@ -270,13 +219,7 @@ public partial class GaussianSplatCombiner
         GaussianSplatCombiner sceneCombiner = CleanupCombinedBehaviours(combinedObject);
         if (sceneCombiner == null)
         {
-            RefreshCombinerProgramAssetLookup();
-            if (UdonSharpEditorUtility.GetUdonSharpProgramAsset(typeof(GaussianSplatCombiner)) == null)
-            {
-                return null;
-            }
-            sceneCombiner = combinedObject.AddUdonSharpComponent<GaussianSplatCombiner>();
-            sceneCombiner = CleanupCombinedBehaviours(combinedObject) ?? sceneCombiner;
+            sceneCombiner = Undo.AddComponent<GaussianSplatCombiner>(combinedObject);
         }
 
         GaussianSplatCombiner staleCombiner = owner.gameObject.GetComponent<GaussianSplatCombiner>();
@@ -626,7 +569,7 @@ public partial class GaussianSplatCombiner
     int GetSceneMaxLODChunkCount()
     {
         int maxChunks = 1;
-        GaussianSplatLODObject[] lodObjects = UnityEngine.Object.FindObjectsOfType<GaussianSplatLODObject>(true);
+        GaussianSplatLODObject[] lodObjects = UnityEngine.Object.FindObjectsByType<GaussianSplatLODObject>(FindObjectsInactive.Include, FindObjectsSortMode.None);
         for (int i = 0; i < lodObjects.Length; i++)
         {
             GaussianSplatLODObject lodObject = lodObjects[i];

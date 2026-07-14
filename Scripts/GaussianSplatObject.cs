@@ -1,13 +1,12 @@
 using UnityEngine;
-using UdonSharp;
 
-#if UNITY_EDITOR && !COMPILER_UDONSHARP
+#if UNITY_EDITOR
 using UnityEditor;
 #endif
 
 namespace GaussianSplatting
 {
-    public class GaussianSplatObject : UdonSharpBehaviour
+    public class GaussianSplatObject : MonoBehaviour
     {
         [SerializeField] public GaussianSplatRenderer gaussianSplatRenderer;
         [SerializeField] public GameObject sortedObject;
@@ -16,7 +15,7 @@ namespace GaussianSplatting
         [TextArea(1, 2)] [SerializeField] public string description;
         [SerializeField] int maxShBand = -1;
 
-#if UNITY_EDITOR && !COMPILER_UDONSHARP
+#if UNITY_EDITOR
         void Reset()
         {
             EnsureSceneRenderer(false);
@@ -53,7 +52,7 @@ namespace GaussianSplatting
 
         GaussianSplatRenderer ResolveSceneRendererReference()
         {
-#if UNITY_EDITOR && !COMPILER_UDONSHARP
+#if UNITY_EDITOR
             if (gaussianSplatRenderer != null && gaussianSplatRenderer.gameObject != null && gaussianSplatRenderer.gameObject.scene == gameObject.scene)
             {
                 return gaussianSplatRenderer;

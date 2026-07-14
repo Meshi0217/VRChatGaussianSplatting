@@ -1,20 +1,21 @@
-﻿
+
 using UnityEngine;
-using UdonSharp;
-using VRC.SDKBase;
-using VRC.Udon;
-using VRC.SDK3.Components;
 
 namespace GaussianSplatting
 {
 
-[UdonBehaviourSyncMode(BehaviourSyncMode.None)]
-public class TurnOnToggle : UdonSharpBehaviour 
-{   
+public class TurnOnToggle : MonoBehaviour
+{
     [Tooltip("The Gaussian Splat Object that will be enabled when this toggle is activated.")]
     public GameObject targetObject;
     [Tooltip("The automatically discovered Gaussian Splat Object index that will be enabled when this toggle is activated.")]
     public int enableObjectIndex = 0;
+
+    // Sorted by instance id so enableObjectIndex refers to a stable object across calls.
+    static GaussianSplatObject[] FindSceneSplatObjects()
+    {
+        return Object.FindObjectsByType<GaussianSplatObject>(FindObjectsInactive.Include, FindObjectsSortMode.InstanceID);
+    }
 
     GameObject GetTargetObject()
     {
@@ -23,17 +24,13 @@ public class TurnOnToggle : UdonSharpBehaviour
             return targetObject;
         }
 
-#if COMPILER_UDONSHARP
-        return null;
-#else
-        GaussianSplatObject[] sceneSplatObjects = Object.FindObjectsOfType<GaussianSplatObject>(true);
+        GaussianSplatObject[] sceneSplatObjects = FindSceneSplatObjects();
         if (enableObjectIndex < 0 || enableObjectIndex >= sceneSplatObjects.Length || sceneSplatObjects[enableObjectIndex] == null)
         {
             return null;
         }
 
         return sceneSplatObjects[enableObjectIndex].gameObject;
-#endif
     }
 
     void SelectOnlyTargetObject(GameObject selectedObject)
@@ -43,8 +40,7 @@ public class TurnOnToggle : UdonSharpBehaviour
             return;
         }
 
-#if !COMPILER_UDONSHARP
-        GaussianSplatObject[] sceneSplatObjects = Object.FindObjectsOfType<GaussianSplatObject>(true);
+        GaussianSplatObject[] sceneSplatObjects = FindSceneSplatObjects();
         for (int i = 0; i < sceneSplatObjects.Length; i++)
         {
             GaussianSplatObject splatObject = sceneSplatObjects[i];
@@ -60,37 +56,15 @@ public class TurnOnToggle : UdonSharpBehaviour
         {
             selectedSplatObject.NotifyRendererEnabled();
         }
-#else
-        selectedObject.SetActive(true);
-        GaussianSplatObject selectedSplatObject = selectedObject.GetComponent<GaussianSplatObject>();
-        if (selectedSplatObject != null)
-        {
-            selectedSplatObject.NotifyRendererEnabled();
-        }
-#endif
-    }
-
-    public void Start()
-    {
-        GameObject targetObject = GetTargetObject();
-        if (targetObject != null)
-        {
-            this.InteractionText = targetObject.name;
-        }
     }
 
     public void SelectObject()
     {
-        if (Networking.LocalPlayer != null)
-        {
-            Networking.SetOwner(Networking.LocalPlayer, gameObject);
-        }
-
         GameObject targetObject = GetTargetObject();
         SelectOnlyTargetObject(targetObject);
     }
 
-    public override void Interact()
+    public void Interact()
     {
         SelectObject();
     }

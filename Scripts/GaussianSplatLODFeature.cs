@@ -1,6 +1,6 @@
 using UnityEngine;
 
-#if UNITY_EDITOR && !COMPILER_UDONSHARP
+#if UNITY_EDITOR
 using System.IO;
 #endif
 
@@ -8,7 +8,7 @@ namespace GaussianSplatting
 {
     public static class GaussianSplatLODFeature
     {
-#if UNITY_EDITOR && !COMPILER_UDONSHARP
+#if UNITY_EDITOR
         const string LodObjectPath = "Assets/VRChatGaussianSplatting/Scripts/GaussianSplatLODObject.cs";
         const string LodPlaceholderMarker = "VRCGS_LOD_PLACEHOLDER";
 

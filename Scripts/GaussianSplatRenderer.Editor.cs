@@ -1,17 +1,16 @@
-#if UNITY_EDITOR && !COMPILER_UDONSHARP
+#if UNITY_EDITOR
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEditor;
 using UnityEngine.Rendering;
 using UnityEngine.SceneManagement;
-using UdonSharpEditor;
 
 namespace GaussianSplatting
 {
 
 // Editor-only scene management, hierarchy bookkeeping, and sorting-resource generation for
 // GaussianSplatRenderer. Kept in a partial file so the runtime behaviour stays small; the whole
-// file is excluded from Udon compilation via the preprocessor guard above.
+// file stays editor-only via the preprocessor guard above.
 public static class GSEditorText
 {
     static readonly System.Reflection.PropertyInfo EditorLanguageProperty = typeof(UnityEditor.Editor).Assembly
@@ -788,8 +787,8 @@ public partial class GaussianSplatRenderer
             {
                 SceneManager.MoveGameObjectToScene(rendererObject, scene);
             }
-            primaryRenderer = rendererObject.AddUdonSharpComponent<GaussianSplatRenderer>();
-            RadixSort radixSort = rendererObject.AddUdonSharpComponent<RadixSort>();
+            primaryRenderer = rendererObject.AddComponent<GaussianSplatRenderer>();
+            RadixSort radixSort = rendererObject.AddComponent<RadixSort>();
             radixSort.computeKeyValues = AssetDatabase.LoadAssetAtPath<Material>("Assets/VRChatGaussianSplatting/Resources/Materials/VRChatGaussianSplatting_ComputeKeyValue.mat");
             radixSort.radixSort = AssetDatabase.LoadAssetAtPath<Material>("Assets/VRChatGaussianSplatting/RadixSort/Materials/Misha_RadixSort.mat");
             radixSort.copySortedOrder = AssetDatabase.LoadAssetAtPath<Material>("Assets/VRChatGaussianSplatting/Resources/Materials/VRChatGaussianSplatting_CopyRenderOrder.mat");

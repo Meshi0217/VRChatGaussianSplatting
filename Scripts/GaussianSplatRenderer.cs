@@ -1,7 +1,4 @@
 using UnityEngine;
-using UdonSharp;
-using VRC.SDKBase;
-using VRC.SDK3.Rendering;
 
 namespace GaussianSplatting
 {
@@ -12,8 +9,7 @@ public enum GaussianSplatRenderingMode
     CombineAllSplats = 1,
 }
 
-[UdonBehaviourSyncMode(BehaviourSyncMode.Continuous)]
-public partial class GaussianSplatRenderer : UdonSharpBehaviour
+public partial class GaussianSplatRenderer : MonoBehaviour
 {
     const int MAX_CAMERA_COUNT = 2;
     const int MAX_COMBINED_SPLAT_COUNT = 1 << 24;
@@ -66,13 +62,11 @@ public partial class GaussianSplatRenderer : UdonSharpBehaviour
     public RenderTexture splatRenderOrderPhoto;
 
     [Tooltip("If true, the material properties will be overridden with the values set in this script. If false, the material properties will be set to their default values.")]
-    [UdonSynced, SerializeField] public bool overrideMaterialProperties;
-    [Tooltip("When enabled, non-master players cannot change in-game UI controls marked as global.")]
-    [SerializeField] bool blockNonMasterGlobalChanges;
+    [SerializeField] public bool overrideMaterialProperties;
     [SerializeField] bool overrideRenderQueue;
     [SerializeField] int startRenderQueue = DEFAULT_START_RENDER_QUEUE;
-    [UdonSynced, Range(0, 3)] [SerializeField] int requestedSHBand = 3;
-    [UdonSynced, Range(0.0f, 2.0f)] [SerializeField] public float gaussianScale = 1.0f;
+    [Range(0, 3)] [SerializeField] int requestedSHBand = 3;
+    [Range(0.0f, 2.0f)] [SerializeField] public float gaussianScale = 1.0f;
     [Range(0.0f, 1.0f)] [SerializeField] float thinThreshold = 0.005f;
     [Range(0.0f, 3.0f)] [SerializeField] float antiAliasing = 1.0f;
     [Range(-20.0f, 10.0f)] [SerializeField] float log2MinScale = -15.0f;
@@ -84,10 +78,10 @@ public partial class GaussianSplatRenderer : UdonSharpBehaviour
     [Range(0.0f, 5.0f)] [SerializeField] float opacity = 1.0f;
     [SerializeField] Vector3 oklchShift = Vector3.zero;
     [SerializeField] float gamma = 1.0f;
-    [UdonSynced, SerializeField] bool useVrcLightVolumes;
+    [SerializeField] bool useVrcLightVolumes;
     [Range(0.0f, 4.0f)] [SerializeField] float lightVolumeIntensity = 1.0f;
 
-#if UNITY_EDITOR && !COMPILER_UDONSHARP
+#if UNITY_EDITOR
     static bool _editorRefreshQueued = true;
 #endif
 
@@ -125,7 +119,7 @@ public partial class GaussianSplatRenderer : UdonSharpBehaviour
         // The combiner lives on the serialized "CombinedSorted" object. At runtime we
         // rely on the serialized reference only; calling GameObject.Find here would be
         // unsafe (e.g. during OnDisable it trips Unity's go.IsActive() assertion).
-#if UNITY_EDITOR && !COMPILER_UDONSHARP
+#if UNITY_EDITOR
         GameObject combinedObject = GameObject.Find("CombinedSorted");
         if (combinedObject != null)
         {
@@ -190,7 +184,7 @@ public partial class GaussianSplatRenderer : UdonSharpBehaviour
             return new Material[0];
         }
 
-#if UNITY_EDITOR && !COMPILER_UDONSHARP
+#if UNITY_EDITOR
         if (!Application.isPlaying)
         {
             return renderer.sharedMaterials;
@@ -429,11 +423,6 @@ public partial class GaussianSplatRenderer : UdonSharpBehaviour
         }
     }
 
-    void EnsureLocalOwnership() { if (Networking.LocalPlayer != null) Networking.SetOwner(Networking.LocalPlayer, gameObject); }
-    void RequestSyncedStateUpdate() { if (Networking.LocalPlayer != null) RequestSerialization(); }
-    bool LocalPlayerIsMasterOrEditor() { return Networking.LocalPlayer == null || Networking.LocalPlayer.isMaster; }
-    bool CanModifyGlobalState() { return !blockNonMasterGlobalChanges || LocalPlayerIsMasterOrEditor(); }
-    public bool CanLocalPlayerModifyGlobalState() { return CanModifyGlobalState(); }
     public bool IsCombinedRenderingMode() { return renderingMode == GaussianSplatRenderingMode.CombineAllSplats; }
     bool ShouldAlwaysUpdate(bool useEditorOps) { return useEditorOps || IsCombinedRenderingMode() || alwaysUpdate; }
 
@@ -544,7 +533,7 @@ public partial class GaussianSplatRenderer : UdonSharpBehaviour
 
     void ApplyMaterialSettingsToSelectedObject()
     {
-#if UNITY_EDITOR && !COMPILER_UDONSHARP
+#if UNITY_EDITOR
         if (!Application.isPlaying)
         {
             return;
@@ -584,20 +573,20 @@ public partial class GaussianSplatRenderer : UdonSharpBehaviour
         return splat != null ? splat.GetMaxSHBand() : 0;
     }
     public int GetCurrentSHBand() { return Mathf.Clamp(requestedSHBand, 0, GetSelectedSplatMaxSHBand()); }
-    public void SetSHBand(int value) { if (!CanModifyGlobalState()) return; EnsureLocalOwnership(); requestedSHBand = Mathf.Clamp(value, 0, 3); ApplyMaterialSettingsToSelectedObject(); RequestSyncedStateUpdate(); }
+    public void SetSHBand(int value) { requestedSHBand = Mathf.Clamp(value, 0, 3); ApplyMaterialSettingsToSelectedObject(); }
     public float GetCameraPositionQuantization() { return cameraPositionQuantization; }
     public void SetCameraPositionQuantization(float value) { cameraPositionQuantization = Mathf.Max(0.0f, value); ResetCameraPositions(); }
     public bool GetAlwaysUpdate() { return IsCombinedRenderingMode() || alwaysUpdate; }
     public void SetAlwaysUpdate(bool value) { alwaysUpdate = value; ResetCameraPositions(); }
     public void ToggleAlwaysUpdate() { SetAlwaysUpdate(!alwaysUpdate); }
     public bool GetUseVrcLightVolumes() { return useVrcLightVolumes; }
-    public void SetUseVrcLightVolumes(bool value) { if (!CanModifyGlobalState()) return; EnsureLocalOwnership(); useVrcLightVolumes = value; ApplyMaterialSettingsToSelectedObject(); RequestSyncedStateUpdate(); }
+    public void SetUseVrcLightVolumes(bool value) { useVrcLightVolumes = value; ApplyMaterialSettingsToSelectedObject(); }
     public void ToggleVrcLightVolumes() { SetUseVrcLightVolumes(!useVrcLightVolumes); }
     public float GetAntiAliasing() { return antiAliasing; }
     public void SetAntiAliasing(float value) { overrideMaterialProperties = true; antiAliasing = Mathf.Clamp(value, 0.0f, 3.0f); ApplyMaterialSettingsToSelectedObject(); }
     public float GetLightVolumeIntensity() { return lightVolumeIntensity; }
     public void SetLightVolumeIntensity(float value) { overrideMaterialProperties = true; lightVolumeIntensity = Mathf.Clamp(value, 0.0f, 4.0f); ApplyMaterialSettingsToSelectedObject(); }
-    public void SetGaussianScale(float value) { if (!CanModifyGlobalState()) return; EnsureLocalOwnership(); overrideMaterialProperties = true; gaussianScale = Mathf.Clamp(value, 0.0f, 2.0f); ApplyMaterialSettingsToSelectedObject(); RequestSyncedStateUpdate(); }
+    public void SetGaussianScale(float value) { overrideMaterialProperties = true; gaussianScale = Mathf.Clamp(value, 0.0f, 2.0f); ApplyMaterialSettingsToSelectedObject(); }
     public void SetAlphaCutoff(float value) { overrideMaterialProperties = true; alphaCutoff = Mathf.Clamp(value, 0.005f, 0.3f); ApplyMaterialSettingsToSelectedObject(); }
     public float GetAlphaCull() { return alphaCull; }
     public void SetAlphaCull(float value) { overrideMaterialProperties = true; alphaCull = Mathf.Clamp(value, 0.005f, 0.3f); ApplyMaterialSettingsToSelectedObject(); }
@@ -665,7 +654,7 @@ public partial class GaussianSplatRenderer : UdonSharpBehaviour
         return TryGetSplatSource(splat, out MeshRenderer renderer, out Material primaryMaterial, out Texture positions, out int count) ? count : 0;
     }
 
-#if UNITY_EDITOR && !COMPILER_UDONSHARP
+#if UNITY_EDITOR
     public int GetEditorReadbackRenderedSplatCount()
     {
         GaussianSplatCombiner sceneCombiner = ResolveCombiner();
@@ -749,7 +738,7 @@ public partial class GaussianSplatRenderer : UdonSharpBehaviour
 
     public void SelectSplatObject(GaussianSplatObject selectedSplatObject)
     {
-        if (!CanModifyGlobalState() || !EnsureInitialized() || selectedSplatObject == null || !selectedSplatObject.gameObject.activeInHierarchy)
+        if (!EnsureInitialized() || selectedSplatObject == null || !selectedSplatObject.gameObject.activeInHierarchy)
         {
             return;
         }
@@ -812,20 +801,17 @@ public partial class GaussianSplatRenderer : UdonSharpBehaviour
         }
     }
 
-    void DisableMsaaInGame()
+    void DisableMsaaOnCamera(Camera camera)
     {
-        if (VRCCameraSettings.ScreenCamera != null)
+        if (camera != null)
         {
-            VRCCameraSettings.ScreenCamera.AllowMSAA = false;
+            camera.allowMSAA = false;
         }
     }
 
     bool IsPrimaryRendererInstance()
     {
-#if COMPILER_UDONSHARP
-        return true;
-#else
-        GaussianSplatRenderer[] renderers = UnityEngine.Object.FindObjectsOfType<GaussianSplatRenderer>();
+        GaussianSplatRenderer[] renderers = UnityEngine.Object.FindObjectsByType<GaussianSplatRenderer>(FindObjectsSortMode.None);
         if (renderers == null || renderers.Length <= 1)
         {
             return true;
@@ -847,7 +833,6 @@ public partial class GaussianSplatRenderer : UdonSharpBehaviour
         }
         Debug.LogError("Multiple GaussianSplatRenderer instances found. Only one renderer can be active in a scene.");
         return false;
-#endif
     }
 
     bool EnsureRenderTextureCreated(RenderTexture renderTexture)
@@ -1056,7 +1041,7 @@ public partial class GaussianSplatRenderer : UdonSharpBehaviour
             combined.SetLodSplatTargetScale(GetEffectiveCombinedLodTargetScale());
             combined.SetLodDirectionalBias(GetCombinedLodDirectionalBias());
         }
-#if UNITY_EDITOR && !COMPILER_UDONSHARP
+#if UNITY_EDITOR
         if (useEditorOps)
         {
             if (IsCombinedRenderingMode() && (combined == null || !UpdateCombinedTexturesForSort(combined, screenCamPos, screenCamPos, screenCamForward, photoCamPos, sortPhotoCamera, true, true)))
@@ -1133,25 +1118,16 @@ public partial class GaussianSplatRenderer : UdonSharpBehaviour
 
     void Update()
     {
-        DisableMsaaInGame();
-        if (!EnsureInitialized() || VRCCameraSettings.ScreenCamera == null)
+        Camera screenCamera = Camera.main;
+        DisableMsaaOnCamera(screenCamera);
+        if (!EnsureInitialized() || screenCamera == null)
         {
             return;
         }
-        Vector3 screenCamPos = VRCCameraSettings.ScreenCamera.Position;
-        Vector3 screenCamForward = VRCCameraSettings.ScreenCamera.Rotation * Vector3.forward;
-        VRCCameraSettings photoCam = VRCCameraSettings.PhotoCamera;
-        bool sortPhotoCamera = photoCam != null && photoCam.Active;
-        SortCameraViews(screenCamPos, screenCamForward, sortPhotoCamera ? photoCam.Position : screenCamPos, sortPhotoCamera, false);
-    }
-
-    public override void OnDeserialization()
-    {
-        if (!EnsureInitialized())
-        {
-            return;
-        }
-        ApplyMaterialSettingsToSelectedObject();
+        Transform cameraTransform = screenCamera.transform;
+        Vector3 screenCamPos = cameraTransform.position;
+        Vector3 screenCamForward = cameraTransform.forward;
+        SortCameraViews(screenCamPos, screenCamForward, screenCamPos, false, false);
     }
 }
 

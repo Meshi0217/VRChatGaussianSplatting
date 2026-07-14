@@ -1,5 +1,5 @@
 ﻿
-#if UNITY_EDITOR && !COMPILER_UDONSHARP
+#if UNITY_EDITOR
 using System;
 using Unity.Collections;
 using System.Collections.Generic;
@@ -16,8 +16,6 @@ using UnityEngine.Rendering;
 using UnityEngine.SceneManagement;
 using GaussianSplatting.Editor.Utils;
 using GaussianSplatting;
-using UdonSharp;
-using UdonSharpEditor;
 
 namespace GaussianSplatting
 {
@@ -483,7 +481,7 @@ namespace GaussianSplatting
 
             GaussianSplatObject splatObject = go.GetComponent<GaussianSplatObject>();
             if (splatObject == null)
-                splatObject = go.AddUdonSharpComponent<GaussianSplatObject>();
+                splatObject = go.AddComponent<GaussianSplatObject>();
             splatObject.gaussianSplatRenderer = null;
             splatObject.sortedObject = null;
             splatObject.sortedRenderer = meshRenderer;

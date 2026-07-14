@@ -1,6 +1,5 @@
 #if UNITY_EDITOR
 using GaussianSplatting;
-using UdonSharpEditor;
 using UnityEditor;
 using UnityEngine;
 
@@ -31,8 +30,6 @@ namespace GaussianSplatting.Editor
 
         public override void OnInspectorGUI()
         {
-            DrawUdonSharpHeader();
-
             serializedObject.Update();
 
             EditorGUI.BeginChangeCheck();
@@ -71,7 +68,6 @@ namespace GaussianSplatting.Editor
             }
 
             EditorGUILayout.Space();
-            DrawUdonSharpUtilities();
         }
 
         void MarkFormatsInitialized()
@@ -98,30 +94,6 @@ namespace GaussianSplatting.Editor
                     EditorUtility.SetDirty(owner);
                 }
                 EditorUtility.SetDirty(combiner);
-            }
-        }
-
-        void DrawUdonSharpHeader()
-        {
-            if (targets != null && targets.Length > 1)
-            {
-                UdonSharpGUI.DrawDefaultUdonSharpBehaviourHeader(targets);
-            }
-            else
-            {
-                UdonSharpGUI.DrawDefaultUdonSharpBehaviourHeader(target);
-            }
-        }
-
-        void DrawUdonSharpUtilities()
-        {
-            if (targets != null && targets.Length > 1)
-            {
-                UdonSharpGUI.DrawUtilities(targets);
-            }
-            else
-            {
-                UdonSharpGUI.DrawUtilities(target);
             }
         }
     }

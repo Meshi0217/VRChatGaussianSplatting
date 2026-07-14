@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-#if UNITY_EDITOR && !COMPILER_UDONSHARP
+#if UNITY_EDITOR
 using System.IO;
 using Unity.Collections;
 using System.IO.Compression;
