@@ -1,10 +1,15 @@
 
 using UnityEngine;
+using UnityEngine.EventSystems;
 
 namespace GaussianSplatting
 {
 
-public class TurnOnToggle : MonoBehaviour
+// Clicking this object makes its target splat the only visible one. In VRChat this was an
+// Interact() gaze-press; here it is a normal screen click, which needs a Collider on this object
+// and a PhysicsRaycaster on the rendering camera (GaussianSplatUiBuilder wires both up).
+// The same entry point works from a uGUI Button, since SelectObject() takes no arguments.
+public class TurnOnToggle : MonoBehaviour, IPointerClickHandler
 {
     [Tooltip("The Gaussian Splat Object that will be enabled when this toggle is activated.")]
     public GameObject targetObject;
@@ -15,6 +20,11 @@ public class TurnOnToggle : MonoBehaviour
     static GaussianSplatObject[] FindSceneSplatObjects()
     {
         return Object.FindObjectsByType<GaussianSplatObject>(FindObjectsInactive.Include, FindObjectsSortMode.InstanceID);
+    }
+
+    void Start()
+    {
+        GaussianSplatClickTarget.WarnIfNotClickable(this);
     }
 
     GameObject GetTargetObject()
@@ -58,20 +68,14 @@ public class TurnOnToggle : MonoBehaviour
         }
     }
 
+    public void OnPointerClick(PointerEventData eventData)
+    {
+        SelectObject();
+    }
+
     public void SelectObject()
     {
-        GameObject targetObject = GetTargetObject();
-        SelectOnlyTargetObject(targetObject);
-    }
-
-    public void Interact()
-    {
-        SelectObject();
-    }
-
-    public void OnTrigger()
-    {
-        SelectObject();
+        SelectOnlyTargetObject(GetTargetObject());
     }
 }
 

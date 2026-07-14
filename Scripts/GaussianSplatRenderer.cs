@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.Rendering;
 
 namespace GaussianSplatting
 {
@@ -1116,18 +1117,35 @@ public partial class GaussianSplatRenderer : MonoBehaviour
         OnScreenSortPublished();
     }
 
-    void Update()
+    void OnEnable()
     {
-        Camera screenCamera = Camera.main;
-        DisableMsaaOnCamera(screenCamera);
-        if (!EnsureInitialized() || screenCamera == null)
+        RenderPipelineManager.beginCameraRendering -= OnBeginCameraRendering;
+        RenderPipelineManager.beginCameraRendering += OnBeginCameraRendering;
+    }
+
+    void OnDisable()
+    {
+        RenderPipelineManager.beginCameraRendering -= OnBeginCameraRendering;
+    }
+
+    // The sorted render order lives in global material state, so it has to be rebuilt for
+    // whichever camera is about to be drawn rather than once per frame for Camera.main. The
+    // radix sort runs as immediate Graphics.Blit calls, so it completes before this camera's
+    // pass is submitted. In XR both eyes share one camera, hence one sort per head position.
+    void OnBeginCameraRendering(ScriptableRenderContext context, Camera camera)
+    {
+        if (camera == null || camera.cameraType != CameraType.Game)
         {
             return;
         }
-        Transform cameraTransform = screenCamera.transform;
-        Vector3 screenCamPos = cameraTransform.position;
-        Vector3 screenCamForward = cameraTransform.forward;
-        SortCameraViews(screenCamPos, screenCamForward, screenCamPos, false, false);
+        DisableMsaaOnCamera(camera);
+        if (!EnsureInitialized())
+        {
+            return;
+        }
+        Transform cameraTransform = camera.transform;
+        Vector3 camPos = cameraTransform.position;
+        SortCameraViews(camPos, cameraTransform.forward, camPos, false, false);
     }
 }
 

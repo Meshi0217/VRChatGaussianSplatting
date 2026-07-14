@@ -294,8 +294,9 @@ public partial class GaussianSplatRenderer
         EditorApplication.hierarchyChanged += QueueEditorRefresh;
         EditorApplication.update -= ProcessEditorRefresh;
         EditorApplication.update += ProcessEditorRefresh;
-        Camera.onPreCull -= OnEditorCameraPreCull;
-        Camera.onPreCull += OnEditorCameraPreCull;
+        // Camera.onPreCull never fires under a scriptable render pipeline.
+        RenderPipelineManager.beginCameraRendering -= OnEditorBeginCameraRendering;
+        RenderPipelineManager.beginCameraRendering += OnEditorBeginCameraRendering;
     }
 
     static void ProcessEditorRefresh()
@@ -330,7 +331,7 @@ public partial class GaussianSplatRenderer
         }
     }
 
-    static void OnEditorCameraPreCull(Camera camera)
+    static void OnEditorBeginCameraRendering(ScriptableRenderContext context, Camera camera)
     {
         if (Application.isPlaying || camera == null || camera.cameraType != CameraType.SceneView)
         {

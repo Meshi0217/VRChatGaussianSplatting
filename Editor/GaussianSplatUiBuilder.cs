@@ -9,6 +9,7 @@ using UnityEditor.Events;
 using UnityEngine;
 using UnityEngine.Events;
 using UnityEngine.EventSystems;
+using UnityEngine.InputSystem.UI;
 using UnityEngine.UI;
 
 namespace GaussianSplatting.Editor
@@ -149,6 +150,7 @@ namespace GaussianSplatting.Editor
             }
 
             EnsureEventSystemExists();
+            EnsurePhysicsRaycasterExists();
 
             Transform existingUi = renderer.transform.Find("Gaussian Splat UI");
             if (existingUi != null)
@@ -758,16 +760,44 @@ namespace GaussianSplatting.Editor
             return slider;
         }
 
+        // StandaloneInputModule reads UnityEngine.Input, which throws outright when the project is
+        // set to the Input System package (this one is). Every EventSystem we touch therefore has
+        // to carry InputSystemUIInputModule instead, including ones left behind by older scenes.
         static void EnsureEventSystemExists()
         {
             EventSystem[] eventSystems = Resources.FindObjectsOfTypeAll<EventSystem>();
             for (int i = 0; i < eventSystems.Length; i++)
             {
                 GameObject existingEventSystemObject = eventSystems[i] != null ? eventSystems[i].gameObject : null;
-                if (existingEventSystemObject != null && !EditorUtility.IsPersistent(existingEventSystemObject)) return;
+                if (existingEventSystemObject == null || EditorUtility.IsPersistent(existingEventSystemObject)) continue;
+                UseInputSystemUiModule(existingEventSystemObject);
+                return;
             }
-            GameObject eventSystemObject = new GameObject("EventSystem", typeof(EventSystem), typeof(StandaloneInputModule));
+            GameObject eventSystemObject = new GameObject("EventSystem", typeof(EventSystem));
             Undo.RegisterCreatedObjectUndo(eventSystemObject, "Create EventSystem");
+            UseInputSystemUiModule(eventSystemObject);
+        }
+
+        static void UseInputSystemUiModule(GameObject eventSystemObject)
+        {
+            StandaloneInputModule legacyModule = eventSystemObject.GetComponent<StandaloneInputModule>();
+            if (legacyModule != null)
+            {
+                Undo.DestroyObjectImmediate(legacyModule);
+            }
+            if (eventSystemObject.GetComponent<InputSystemUIInputModule>() == null)
+            {
+                Undo.AddComponent<InputSystemUIInputModule>(eventSystemObject);
+            }
+        }
+
+        // Screen clicks only reach 3D colliders (QualityToggle, TurnOnToggle) through a
+        // PhysicsRaycaster on the camera that draws them.
+        static void EnsurePhysicsRaycasterExists()
+        {
+            Camera camera = Camera.main;
+            if (camera == null || camera.GetComponent<PhysicsRaycaster>() != null) return;
+            Undo.AddComponent<PhysicsRaycaster>(camera.gameObject);
         }
     }
 }
