@@ -514,20 +514,41 @@ namespace GaussianSplatting.Editor
             EditorUtility.SetDirty(targetBehaviour);
         }
 
+        // The Standard shader has no pass URP knows how to draw, so a material built on it renders
+        // magenta. This is a flat backing panel behind a world-space canvas, so unlit is what it
+        // wanted in the first place. Existing assets are repaired rather than reused as-is, since
+        // the pink ones were already written to disk.
         static Material CreateOpaqueBackgroundMaterial()
         {
             const string materialFolderPath = "Assets/VRChatGaussianSplatting/Resources/Materials";
             const string materialAssetPath = materialFolderPath + "/GaussianSplatUIBackground.mat";
             EnsureFolderExists(materialFolderPath);
-            Material material = AssetDatabase.LoadAssetAtPath<Material>(materialAssetPath);
-            if (material != null) return material;
-            Shader shader = Shader.Find("Standard") ?? Shader.Find("Unlit/Color");
+
+            Shader shader = Shader.Find("Universal Render Pipeline/Unlit") ?? Shader.Find("Unlit/Color");
             if (shader == null) return null;
-            material = new Material(shader);
-            material.name = "Gaussian Splat UI Background";
-            material.color = new Color(0.08f, 0.08f, 0.1f, 1.0f);
-            AssetDatabase.CreateAsset(material, materialAssetPath);
+
+            Material material = AssetDatabase.LoadAssetAtPath<Material>(materialAssetPath);
+            if (material == null)
+            {
+                material = new Material(shader);
+                material.name = "Gaussian Splat UI Background";
+                AssetDatabase.CreateAsset(material, materialAssetPath);
+            }
+            else if (material.shader != shader)
+            {
+                material.shader = shader;
+                EditorUtility.SetDirty(material);
+            }
+
+            SetMaterialColor(material, new Color(0.08f, 0.08f, 0.1f, 1.0f));
             return material;
+        }
+
+        // URP shaders expose _BaseColor; the legacy fallback uses _Color. Set whichever exists.
+        static void SetMaterialColor(Material material, Color color)
+        {
+            if (material.HasProperty("_BaseColor")) material.SetColor("_BaseColor", color);
+            if (material.HasProperty("_Color")) material.SetColor("_Color", color);
         }
 
         static GameObject CreateOpaqueBackgroundPlate(Transform parent, Vector2 sizeDelta)

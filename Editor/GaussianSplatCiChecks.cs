@@ -1,8 +1,10 @@
 #if UNITY_EDITOR
+using System.Collections.Generic;
 using System.Text;
 using UnityEditor;
 using UnityEditor.Rendering;
 using UnityEngine;
+using UnityEngine.Rendering;
 
 namespace GaussianSplatting.Editor
 {
@@ -65,6 +67,70 @@ namespace GaussianSplatting.Editor
 
             Debug.Log("GaussianSplatCiChecks: no shader errors.");
             EditorApplication.Exit(0);
+        }
+
+        // URP draws a pass only when its LightMode tag is one it recognises. A pass with no LightMode
+        // tag counts as SRPDefaultUnlit and is drawn. A shader with no matching pass at all renders
+        // magenta -- and Shader.isSupported does NOT catch this: the Standard shader compiles fine
+        // and reports isSupported = true, it just has nothing URP will draw (ForwardBase/ForwardAdd).
+        static readonly HashSet<string> UrpLightModes = new HashSet<string>
+        {
+            "", "SRPDefaultUnlit", "UniversalForward", "UniversalForwardOnly", "UniversalGBuffer", "Universal2D",
+            "DepthOnly", "DepthNormals", "ShadowCaster", "Meta", "MotionVectors",
+            // this package's own passes, drawn by GaussianSplatRendererFeature
+            "GaussianSplat", "GaussianSplatToSRGB", "GaussianSplatToLinear", "GaussianSplatAlphaMask",
+        };
+
+        static bool UrpCanDraw(Shader shader)
+        {
+            if (shader == null || !shader.isSupported || shader.name == "Hidden/InternalErrorShader")
+            {
+                return false;
+            }
+            for (int subshader = 0; subshader < shader.subshaderCount; subshader++)
+            {
+                for (int pass = 0; pass < shader.GetPassCountInSubshader(subshader); pass++)
+                {
+                    string lightMode = shader.FindPassTagValue(subshader, pass, new ShaderTagId("LightMode")).name ?? "";
+                    if (UrpLightModes.Contains(lightMode))
+                    {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// Fails on any material in this package that URP cannot draw, i.e. that renders magenta.
+        /// </summary>
+        public static void VerifyMaterials()
+        {
+            bool failed = false;
+            int checkedCount = 0;
+
+            foreach (string guid in AssetDatabase.FindAssets("t:Material", new[] { SearchFolder }))
+            {
+                string path = AssetDatabase.GUIDToAssetPath(guid);
+                Material material = AssetDatabase.LoadAssetAtPath<Material>(path);
+                if (material == null)
+                {
+                    continue;
+                }
+                checkedCount++;
+                if (!UrpCanDraw(material.shader))
+                {
+                    Debug.LogError("MATERIAL RENDERS MAGENTA: " + path + " uses '" + (material.shader != null ? material.shader.name : "NULL") + "', which URP has no pass for.");
+                    failed = true;
+                }
+            }
+
+            Debug.Log("GaussianSplatCiChecks: inspected " + checkedCount + " materials.");
+            if (!failed)
+            {
+                Debug.Log("GaussianSplatCiChecks: no magenta materials.");
+            }
+            EditorApplication.Exit(failed ? 1 : 0);
         }
 
         /// <summary>
