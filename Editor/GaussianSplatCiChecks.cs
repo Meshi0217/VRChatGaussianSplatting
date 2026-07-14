@@ -83,7 +83,10 @@ namespace GaussianSplatting.Editor
 
         static bool UrpCanDraw(Shader shader)
         {
-            if (shader == null || !shader.isSupported || shader.name == "Hidden/InternalErrorShader")
+            // Deliberately not Shader.isSupported: that needs a graphics device, so it reports false
+            // for everything under -batchmode and would fail this check on every material. The pass
+            // metadata below is GPU-independent, and ShaderHasError covers the broken-shader case.
+            if (shader == null || shader.name == "Hidden/InternalErrorShader" || ShaderUtil.ShaderHasError(shader))
             {
                 return false;
             }

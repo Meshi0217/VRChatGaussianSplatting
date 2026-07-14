@@ -39,6 +39,16 @@ and it will check and fix all of them:
 
 The same checks appear as errors with a **Fix** button on the `GaussianSplatRenderer` inspector.
 
+### First run
+
+The sorting RenderTextures are generated per scene into `Assets/Temp/GS_<scene>/`, which is not part
+of this repository — they are rebuilt on demand. Until they exist, the renderer logs
+
+> Splat Render Order texture is not assigned. Please assign a RenderTexture.
+
+Opening a scene with splats in it regenerates them. If the message persists, the shaders are not
+compiling; see [Unity 6 porting notes](#unity-6-porting-notes).
+
 ### VR
 
 Set up XR the usual way: **XR Plug-in Management > OpenXR**, with **Render Mode = Single Pass
@@ -107,8 +117,67 @@ Changed:
   fires, so it had been dead.
 - **`GrabPass` is gone.** See below.
 
+Kept: `QualityToggle` and `TurnOnToggle` (as click targets), the Android/Quest no-geometry build
+pass, and the combined rendering mode.
+
 Not provided: the LOD path. `GaussianSplatLODObject` is a stub in the upstream repository and its
 shaders (`LODChunkSelect`, `LODCombineData`) are not part of it.
+
+## Unity 6 porting notes
+
+Two things broke on the way from Unity 2022.3 (which is what VRChat uses) to Unity 6, in ways that
+did not look like what they were.
+
+### `#pragma` in include files
+
+Unity ignores Unity-specific `#pragma` directives in files pulled in with a plain `#include`;
+`#include_with_pragmas` exists to opt into them. **Unity 2022.3 honoured them from a plain `#include`
+anyway. Unity 6 does not**, and drops the snippet:
+
+> Both vertex and fragment programs must be present in a shader snippet. Excluding it from
+> compilation.
+
+`GS.cginc` and `FullscreenCommon.cginc` hold the entry-point pragmas for seven shaders, so all seven
+were dead on Unity 6 — and the symptom surfaced a long way away: the shaders reported
+`isSupported = false`, so their materials reported `HasProperty("_GS_Positions") == false`, so the
+renderer found zero splats, so it never created the sorting RenderTextures, so you got *"Splat Render
+Order texture is not assigned."* Both files are now included with `#include_with_pragmas`.
+
+### Magenta materials
+
+`Shader.isSupported` does **not** tell you whether URP can draw a shader. The Standard shader
+compiles and reports `isSupported = true`; it simply has no pass URP knows (`ForwardBase` /
+`ForwardAdd`), so URP substitutes the error material. The check that matters is whether any pass
+carries a `LightMode` tag URP recognises — or no `LightMode` tag at all, which counts as
+`SRPDefaultUnlit`.
+
+Materials in this package are all URP-drawable, and `VerifyMaterials` (below) keeps them that way.
+
+## Verification
+
+Three batch-mode entry points, useful in CI and for checking a change did not quietly break
+something:
+
+```bash
+Unity.exe -batchmode -quit -projectPath . -executeMethod \
+  GaussianSplatting.Editor.GaussianSplatCiChecks.CheckShaders
+Unity.exe -batchmode -quit -projectPath . -executeMethod \
+  GaussianSplatting.Editor.GaussianSplatCiChecks.VerifyMaterials
+Unity.exe -batchmode -quit -projectPath . -executeMethod \
+  GaussianSplatting.Editor.GaussianSplatCiChecks.VerifyScenes
+```
+
+- **`CheckShaders`** — fails on shader errors, *and* on the "must be present in a shader snippet"
+  warning, which is only a warning but means the shader renders nothing at all.
+- **`VerifyMaterials`** — fails on any material URP cannot draw, judged by pass `LightMode` tags
+  rather than `Shader.isSupported` (see [Magenta materials](#magenta-materials)).
+- **`VerifyScenes`** — opens each example scene and checks it is actually playable: no missing
+  scripts, a camera, an `EventSystem` with `InputSystemUIInputModule`, a `PhysicsRaycaster`, and UI
+  buttons whose `onClick` points at something. Grepping the YAML cannot see any of this — components
+  are stored by script GUID, not by name.
+
+None of these need a graphics device. Note that `Shader.isSupported` *does*, which is why it is not
+used: under `-batchmode` it reports false for every shader.
 
 ## Rendering pipeline
 
