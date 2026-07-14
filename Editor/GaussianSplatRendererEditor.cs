@@ -1,4 +1,5 @@
 #if UNITY_EDITOR
+using System.Collections.Generic;
 using GaussianSplatting;
 using UnityEditor;
 using UnityEngine;
@@ -9,6 +10,30 @@ namespace GaussianSplatting.Editor
     [CanEditMultipleObjects]
     class GaussianSplatRendererEditor : UnityEditor.Editor
     {
+        // The project-side URP setup is the difference between "splats render" and "nothing happens
+        // and nothing tells you why", and it cannot be committed with this package. Keep it in view.
+        void DrawUrpSetupWarnings()
+        {
+            List<GaussianSplatUrpSetup.Issue> issues = GaussianSplatUrpSetup.Validate();
+            if (issues.Count == 0)
+            {
+                return;
+            }
+
+            bool anyFixable = false;
+            foreach (GaussianSplatUrpSetup.Issue issue in issues)
+            {
+                EditorGUILayout.HelpBox(issue.Message, MessageType.Error);
+                anyFixable |= issue.Fixable;
+            }
+
+            if (anyFixable && GUILayout.Button(GSEditorText.T("Fix URP Setup", "URP 設定を修正")))
+            {
+                GaussianSplatUrpSetup.Fix();
+            }
+            EditorGUILayout.Space();
+        }
+
         SerializedProperty _cameraPositionQuantization;
         SerializedProperty _alwaysUpdate;
         SerializedProperty _splatRenderOrder;
@@ -68,6 +93,8 @@ namespace GaussianSplatting.Editor
 
         public override void OnInspectorGUI()
         {
+            DrawUrpSetupWarnings();
+
             serializedObject.Update();
 
             DrawSettingsGroup(GSEditorText.T("Rendering Settings", "表示設定"), DrawRenderingSettings);
