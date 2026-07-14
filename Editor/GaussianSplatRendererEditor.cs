@@ -12,7 +12,6 @@ namespace GaussianSplatting.Editor
         SerializedProperty _cameraPositionQuantization;
         SerializedProperty _alwaysUpdate;
         SerializedProperty _splatRenderOrder;
-        SerializedProperty _splatRenderOrderPhoto;
         SerializedProperty _renderingMode;
         SerializedProperty _combinedLodSplatBudgetPC;
         SerializedProperty _combinedLodSplatBudgetAndroid;
@@ -44,7 +43,6 @@ namespace GaussianSplatting.Editor
             _cameraPositionQuantization = serializedObject.FindProperty("cameraPositionQuantization");
             _alwaysUpdate = serializedObject.FindProperty("alwaysUpdate");
             _splatRenderOrder = serializedObject.FindProperty("splatRenderOrder");
-            _splatRenderOrderPhoto = serializedObject.FindProperty("splatRenderOrderPhoto");
             _renderingMode = serializedObject.FindProperty("renderingMode");
             _combinedLodSplatBudgetPC = serializedObject.FindProperty("combinedLodSplatBudgetPC");
             _combinedLodSplatBudgetAndroid = serializedObject.FindProperty("combinedLodSplatBudgetAndroid");
@@ -245,7 +243,6 @@ namespace GaussianSplatting.Editor
             EditorGUILayout.PropertyField(_cameraPositionQuantization, GSEditorText.C("Camera Position Quantization", "カメラ位置量子化"));
             EditorGUILayout.PropertyField(_alwaysUpdate, GSEditorText.C("Always Update", "常に更新"));
             EditorGUILayout.PropertyField(_splatRenderOrder, GSEditorText.C("Splat Render Order", "スプラット描画順"));
-            EditorGUILayout.PropertyField(_splatRenderOrderPhoto, GSEditorText.C("Photo Splat Render Order", "写真スプラット描画順"));
         }
 
         void DrawMaterialSettings()

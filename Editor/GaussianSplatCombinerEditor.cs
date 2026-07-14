@@ -13,7 +13,6 @@ namespace GaussianSplatting.Editor
         SerializedProperty _combinedRotationsFormat;
         SerializedProperty _combinedScalesFormat;
         SerializedProperty _combinedColorsFormat;
-        SerializedProperty _combinedColorsCameraFormat;
         SerializedProperty _combinedStartRenderQueue;
         SerializedProperty _combinedTextureFormatsInitialized;
 
@@ -23,7 +22,6 @@ namespace GaussianSplatting.Editor
             _combinedRotationsFormat = serializedObject.FindProperty("combinedRotationsFormat");
             _combinedScalesFormat = serializedObject.FindProperty("combinedScalesFormat");
             _combinedColorsFormat = serializedObject.FindProperty("combinedColorsFormat");
-            _combinedColorsCameraFormat = serializedObject.FindProperty("combinedColorsCameraFormat");
             _combinedStartRenderQueue = serializedObject.FindProperty("combinedStartRenderQueue");
             _combinedTextureFormatsInitialized = serializedObject.FindProperty("combinedTextureFormatsInitialized");
         }
@@ -43,7 +41,6 @@ namespace GaussianSplatting.Editor
             EditorGUILayout.PropertyField(_combinedRotationsFormat, GSEditorText.C("Rotations", "回転"));
             EditorGUILayout.PropertyField(_combinedScalesFormat, GSEditorText.C("Scales", "スケール"));
             EditorGUILayout.PropertyField(_combinedColorsFormat, GSEditorText.C("Colors", "色"));
-            EditorGUILayout.PropertyField(_combinedColorsCameraFormat, GSEditorText.C("Camera Colors", "カメラ色"));
             EditorGUILayout.EndVertical();
 
             EditorGUILayout.BeginVertical(EditorStyles.helpBox);

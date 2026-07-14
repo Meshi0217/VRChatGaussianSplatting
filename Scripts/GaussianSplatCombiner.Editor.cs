@@ -93,13 +93,11 @@ public partial class GaussianSplatCombiner
         combinedRotationsFormat = source.combinedRotationsFormat;
         combinedScalesFormat = source.combinedScalesFormat;
         combinedColorsFormat = source.combinedColorsFormat;
-        combinedColorsCameraFormat = source.combinedColorsCameraFormat;
         combinedTextureFormatsInitialized = true;
         combinedPositions = source.combinedPositions;
         combinedRotations = source.combinedRotations;
         combinedScales = source.combinedScales;
         combinedColors = source.combinedColors;
-        combinedColorsCamera = source.combinedColorsCamera;
         lodChunkSelection = source.lodChunkSelection;
         lodAlphaState = source.lodAlphaState;
         lodAlphaStateScratch = source.lodAlphaStateScratch;
@@ -112,7 +110,6 @@ public partial class GaussianSplatCombiner
         combinedRotationsFormat = RenderTextureFormat.ARGB32;
         combinedScalesFormat = RenderTextureFormat.ARGBHalf;
         combinedColorsFormat = RenderTextureFormat.ARGB32;
-        combinedColorsCameraFormat = RenderTextureFormat.ARGB32;
         combinedTextureFormatsInitialized = true;
     }
 
@@ -602,7 +599,6 @@ public partial class GaussianSplatCombiner
         RenderTexture previousCombinedRotations = combinedRotations;
         RenderTexture previousCombinedScales = combinedScales;
         RenderTexture previousCombinedColors = combinedColors;
-        RenderTexture previousCombinedColorsCamera = combinedColorsCamera;
         RenderTexture previousLodChunkSelection = lodChunkSelection;
         RenderTexture previousLodAlphaState = lodAlphaState;
         RenderTexture previousLodAlphaStateScratch = lodAlphaStateScratch;
@@ -615,7 +611,6 @@ public partial class GaussianSplatCombiner
         resourcesChanged |= PlySplatImporter.EnsureSortRenderTexture(ref combinedRotations, combinedFolderPath, assetPrefix + "_CombinedRotations", combinedWidth, combinedHeight, combinedRotationsFormat, false, 1);
         resourcesChanged |= PlySplatImporter.EnsureSortRenderTexture(ref combinedScales, combinedFolderPath, assetPrefix + "_CombinedScales", combinedWidth, combinedHeight, combinedScalesFormat, false, 1);
         resourcesChanged |= PlySplatImporter.EnsureSortRenderTexture(ref combinedColors, combinedFolderPath, assetPrefix + "_CombinedColors", combinedWidth, combinedHeight, combinedColorsFormat, false, 1);
-        resourcesChanged |= PlySplatImporter.EnsureSortRenderTexture(ref combinedColorsCamera, combinedFolderPath, assetPrefix + "_CombinedColorsCamera", combinedWidth, combinedHeight, combinedColorsCameraFormat, false, 1);
         int lodSelectionWidth = Mathf.NextPowerOfTwo(Mathf.Max(1, GetSceneMaxLODChunkCount()));
         resourcesChanged |= PlySplatImporter.EnsureSortRenderTexture(ref lodChunkSelection, combinedFolderPath, assetPrefix + "_LODChunkSelection", lodSelectionWidth, 1, RenderTextureFormat.ARGBFloat, true, 1);
         resourcesChanged |= PlySplatImporter.EnsureSortRenderTexture(ref lodAlphaState, combinedFolderPath, assetPrefix + "_LODAlphaState", 1, 1, RenderTextureFormat.ARGBFloat, false, 1);
@@ -713,8 +708,6 @@ public partial class GaussianSplatCombiner
                 Vector4.one,
                 combinedElementCount,
                 0.0f,
-                combinedColorsCamera,
-                true,
                 null,
                 passInfo.SplatCount,
                 passInfo.SplatOffset);
@@ -765,7 +758,6 @@ public partial class GaussianSplatCombiner
             combinedRotations != previousCombinedRotations ||
             combinedScales != previousCombinedScales ||
             combinedColors != previousCombinedColors ||
-            combinedColorsCamera != previousCombinedColorsCamera ||
             lodChunkSelection != previousLodChunkSelection ||
             lodAlphaState != previousLodAlphaState ||
             lodAlphaStateScratch != previousLodAlphaStateScratch ||

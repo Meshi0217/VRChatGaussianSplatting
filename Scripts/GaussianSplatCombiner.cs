@@ -29,10 +29,10 @@ public partial class GaussianSplatCombiner : MonoBehaviour
     [SerializeField] Material combineDataMaterial;
     [SerializeField] Material lodChunkSelectMaterial;
     [SerializeField] Material lodCombineDataMaterial;
-    [SerializeField] RenderTextureFormat combinedPositionsFormat = RenderTextureFormat.ARGBFloat, combinedRotationsFormat = RenderTextureFormat.ARGB32, combinedScalesFormat = RenderTextureFormat.ARGBHalf, combinedColorsFormat = RenderTextureFormat.ARGB32, combinedColorsCameraFormat = RenderTextureFormat.ARGB32;
+    [SerializeField] RenderTextureFormat combinedPositionsFormat = RenderTextureFormat.ARGBFloat, combinedRotationsFormat = RenderTextureFormat.ARGB32, combinedScalesFormat = RenderTextureFormat.ARGBHalf, combinedColorsFormat = RenderTextureFormat.ARGB32;
     [SerializeField, HideInInspector] bool combinedTextureFormatsInitialized = true;
     [SerializeField] int combinedStartRenderQueue = 4050;
-    [SerializeField] RenderTexture combinedPositions, combinedRotations, combinedScales, combinedColors, combinedColorsCamera;
+    [SerializeField] RenderTexture combinedPositions, combinedRotations, combinedScales, combinedColors;
     [SerializeField] RenderTexture lodChunkSelection;
     [SerializeField] RenderTexture lodAlphaState;
     [SerializeField] RenderTexture lodAlphaStateScratch;
@@ -345,7 +345,7 @@ public partial class GaussianSplatCombiner : MonoBehaviour
         Graphics.Blit(null, target, material, pass);
     }
 
-    void SetRenderOrderOnMaterials(Material[] materials, int actualCount, RenderTexture splatRenderOrder, RenderTexture splatRenderOrderPhoto)
+    void SetRenderOrderOnMaterials(Material[] materials, int actualCount, RenderTexture splatRenderOrder)
     {
         for (int i = 0; i < materials.Length; i++)
         {
@@ -355,7 +355,6 @@ public partial class GaussianSplatCombiner : MonoBehaviour
                 continue;
             }
             if (material.HasProperty("_GS_RenderOrder")) material.SetTexture("_GS_RenderOrder", splatRenderOrder);
-            if (material.HasProperty("_GS_RenderOrderPhoto")) material.SetTexture("_GS_RenderOrderPhoto", splatRenderOrderPhoto);
             if (material.HasProperty("_ActualSplatCount")) material.SetInt("_ActualSplatCount", actualCount);
         }
     }
@@ -366,7 +365,6 @@ public partial class GaussianSplatCombiner : MonoBehaviour
             && (combinedRotations == null || EnsureRenderTextureCreated(combinedRotations, "Combined rotations"))
             && (combinedScales == null || EnsureRenderTextureCreated(combinedScales, "Combined scales"))
             && (combinedColors == null || EnsureRenderTextureCreated(combinedColors, "Combined colors"))
-            && (combinedColorsCamera == null || EnsureRenderTextureCreated(combinedColorsCamera, "Combined camera colors"))
             && (CountActiveGPULODObjects() == 0 || EnsureLODMaterials());
     }
 
@@ -720,27 +718,6 @@ public partial class GaussianSplatCombiner : MonoBehaviour
         return true;
     }
 
-    bool RunLODPhotoColorObject(GaussianSplatLODObject lodObject, Vector3 photoCameraPos, int outputStart, int outputBudget, int combinedCoordShift)
-    {
-        if (outputBudget <= 0 || lodCombineDataMaterial == null || lodChunkSelection == null)
-        {
-            return false;
-        }
-
-        int fileCount = lodObject.GetFileCount();
-        for (int fileIndex = 0; fileIndex < fileCount; fileIndex += LOD_SOURCE_BATCH_SIZE)
-        {
-            int batchCount = Mathf.Min(LOD_SOURCE_BATCH_SIZE, fileCount - fileIndex);
-            if (!BindLODSourceBatch(lodCombineDataMaterial, lodObject, fileIndex, batchCount))
-            {
-                continue;
-            }
-            BindLODTransform(lodCombineDataMaterial, lodObject, photoCameraPos, outputStart, outputBudget, fileIndex, batchCount, combinedCoordShift);
-            Blit(combinedColorsCamera, lodCombineDataMaterial, 3, false);
-        }
-        return true;
-    }
-
     bool BindCombinedBatch(ref int sourceCursor, ref int combinedOffset, int positionCapacity, int colorCapacity)
     {
         MeshRenderer ignoredRenderer;
@@ -783,22 +760,12 @@ public partial class GaussianSplatCombiner : MonoBehaviour
         return boundCount > 0;
     }
 
-    public bool UpdateTextures(GaussianSplatObject[] sceneSplats, Vector3 screenCameraPos, Vector3 photoCameraPos, bool useEditorOps)
+    public bool UpdateTextures(GaussianSplatObject[] sceneSplats, Vector3 screenCameraPos, bool useEditorOps)
     {
-        return UpdateTexturesWithPhotoFlag(sceneSplats, null, screenCameraPos, screenCameraPos, photoCameraPos, false, 0, true, useEditorOps);
+        return UpdateTextures(sceneSplats, null, screenCameraPos, screenCameraPos, Vector3.forward, 0, true, useEditorOps);
     }
 
-    public bool UpdateTextures(GaussianSplatObject[] sceneSplats, GaussianSplatLODObject[] sceneLods, Vector3 screenCameraPos, Vector3 lodCameraPos, Vector3 photoCameraPos, int lodSplatBudget, bool adaptLodSelection, bool useEditorOps)
-    {
-        return UpdateTexturesWithPhotoFlag(sceneSplats, sceneLods, screenCameraPos, lodCameraPos, Vector3.forward, photoCameraPos, true, lodSplatBudget, adaptLodSelection, useEditorOps);
-    }
-
-    public bool UpdateTexturesWithPhotoFlag(GaussianSplatObject[] sceneSplats, GaussianSplatLODObject[] sceneLods, Vector3 screenCameraPos, Vector3 lodCameraPos, Vector3 photoCameraPos, bool updatePhotoCameraColors, int lodSplatBudget, bool adaptLodSelection, bool useEditorOps)
-    {
-        return UpdateTexturesWithPhotoFlag(sceneSplats, sceneLods, screenCameraPos, lodCameraPos, Vector3.forward, photoCameraPos, updatePhotoCameraColors, lodSplatBudget, adaptLodSelection, useEditorOps);
-    }
-
-    public bool UpdateTexturesWithPhotoFlag(GaussianSplatObject[] sceneSplats, GaussianSplatLODObject[] sceneLods, Vector3 screenCameraPos, Vector3 lodCameraPos, Vector3 lodCameraForward, Vector3 photoCameraPos, bool updatePhotoCameraColors, int lodSplatBudget, bool adaptLodSelection, bool useEditorOps)
+    public bool UpdateTextures(GaussianSplatObject[] sceneSplats, GaussianSplatLODObject[] sceneLods, Vector3 screenCameraPos, Vector3 lodCameraPos, Vector3 lodCameraForward, int lodSplatBudget, bool adaptLodSelection, bool useEditorOps)
     {
         _sceneSplats = sceneSplats != null ? sceneSplats : new GaussianSplatObject[0];
         _sceneLods = sceneLods != null ? sceneLods : new GaussianSplatLODObject[0];
@@ -814,7 +781,7 @@ public partial class GaussianSplatCombiner : MonoBehaviour
             }
         }
 #endif
-        if (combinedSortedRenderer == null || combinedPositions == null || combinedRotations == null || combinedScales == null || combinedColors == null || combinedColorsCamera == null || combineDataMaterial == null)
+        if (combinedSortedRenderer == null || combinedPositions == null || combinedRotations == null || combinedScales == null || combinedColors == null || combineDataMaterial == null)
         {
 #if !UNITY_EDITOR
             Debug.LogError("Combined rendering mode is missing generated resources. Refresh the GaussianSplatRenderer in the editor.");
@@ -934,60 +901,6 @@ public partial class GaussianSplatCombiner : MonoBehaviour
         SetEditorReadback(useEditorOps ? editorReadbackCount : combinedOffset, combinedOffset, useEditorOps ? editorReadbackAlpha : 0.0f);
 #endif
 
-#if UNITY_EDITOR
-        if (useEditorOps)
-        {
-            return true;
-        }
-#endif
-
-        if (!updatePhotoCameraColors)
-        {
-            return true;
-        }
-
-        Blit(Texture2D.blackTexture, combinedColorsCamera, false);
-        sourceCursor = 0;
-        combinedOffset = 0;
-        int photoNormalEndOffset = 0;
-        while (true)
-        {
-            combineDataMaterial.SetVector("_CameraPosWorld", photoCameraPos);
-            int photoBatchStartOffset = combinedOffset;
-            bool hasPhotoBatch = BindCombinedBatch(ref sourceCursor, ref combinedOffset, positionCapacity, colorCapacity);
-            if (!hasPhotoBatch)
-            {
-                break;
-            }
-            Blit(combinedColorsCamera, combineDataMaterial, 3, false);
-            if (combinedOffset == photoBatchStartOffset)
-            {
-                break;
-            }
-        }
-        photoNormalEndOffset = combinedOffset;
-        int lodPhotoOffset = photoNormalEndOffset;
-        for (int lodIndex = 0; lodIndex < _sceneLods.Length; lodIndex++)
-        {
-            GaussianSplatLODObject lodObject = _sceneLods[lodIndex];
-            if (!IsLodObjectActive(lodIndex) || !IsLodObjectGPUReady(lodObject))
-            {
-                continue;
-            }
-            int remainingCapacity = combinedCapacity - lodPhotoOffset;
-            if (remainingCapacity <= 0)
-            {
-                break;
-            }
-            int lodOutputCount = _lodOutputCounts != null && lodIndex < _lodOutputCounts.Length ? _lodOutputCounts[lodIndex] : 0;
-            lodOutputCount = Mathf.Min(Mathf.Max(0, lodOutputCount), remainingCapacity);
-            if (lodOutputCount <= 0)
-            {
-                continue;
-            }
-            RunLODPhotoColorObject(lodObject, photoCameraPos, lodPhotoOffset, lodOutputCount, combinedCoordShift);
-            lodPhotoOffset += lodOutputCount;
-        }
         return true;
     }
 
@@ -997,7 +910,7 @@ public partial class GaussianSplatCombiner : MonoBehaviour
     /// renderer to bind sort keys against. Returns false (and disables the combined object) when the
     /// combined resources are not ready.
     /// </summary>
-    public bool BindRenderOrder(RenderTexture splatRenderOrder, RenderTexture splatRenderOrderPhoto, out MeshRenderer sortedRenderer, out Material primaryMaterial, out Texture positions, out int count)
+    public bool BindRenderOrder(RenderTexture splatRenderOrder, out MeshRenderer sortedRenderer, out Material primaryMaterial, out Texture positions, out int count)
     {
         sortedRenderer = null;
         primaryMaterial = null;
@@ -1009,7 +922,7 @@ public partial class GaussianSplatCombiner : MonoBehaviour
             return false;
         }
         Transform combinedRoot = combinedSortedRenderer.transform;
-        SetRenderOrderOnMaterials(GetRendererMaterialsForWrite(combinedSortedRenderer), _combinedActualSplatCount, splatRenderOrder, splatRenderOrderPhoto);
+        SetRenderOrderOnMaterials(GetRendererMaterialsForWrite(combinedSortedRenderer), _combinedActualSplatCount, splatRenderOrder);
         for (int i = 0; i < combinedRoot.childCount; i++)
         {
             if (!TryGetCombinedChunkBinding(combinedRoot.GetChild(i), out MeshRenderer chunkRenderer, out int offset))
@@ -1025,7 +938,7 @@ public partial class GaussianSplatCombiner : MonoBehaviour
             {
                 chunkRenderer.enabled = shouldRender;
             }
-            SetRenderOrderOnMaterials(GetRendererMaterialsForWrite(chunkRenderer), _combinedActualSplatCount, splatRenderOrder, splatRenderOrderPhoto);
+            SetRenderOrderOnMaterials(GetRendererMaterialsForWrite(chunkRenderer), _combinedActualSplatCount, splatRenderOrder);
             if (shouldRender && sortedRenderer == null)
             {
                 sortedRenderer = chunkRenderer;

@@ -12,10 +12,9 @@ public enum GaussianSplatRenderingMode
 
 public partial class GaussianSplatRenderer : MonoBehaviour
 {
-    const int MAX_CAMERA_COUNT = 2;
+    const int MAX_CAMERA_COUNT = 1;
     const int MAX_COMBINED_SPLAT_COUNT = 1 << 24;
     const int SCREEN_CAMERA_ID = 0;
-    const int PHOTO_CAMERA_ID = 1;
     const int DEFAULT_START_RENDER_QUEUE = 4050;
     const float DEFAULT_ALPHA_CUTOFF = 0.04f;
     const float DEFAULT_ALPHA_CULL = 0.04f;
@@ -59,8 +58,6 @@ public partial class GaussianSplatRenderer : MonoBehaviour
     [SerializeField] bool alwaysUpdate;
     [Tooltip("2D render texture used to store sorted splat render order for the screen camera.")]
     public RenderTexture splatRenderOrder;
-    [Tooltip("2D render texture used to store sorted splat render order for the photo camera.")]
-    public RenderTexture splatRenderOrderPhoto;
 
     [Tooltip("If true, the material properties will be overridden with the values set in this script. If false, the material properties will be set to their default values.")]
     [SerializeField] public bool overrideMaterialProperties;
@@ -887,13 +884,12 @@ public partial class GaussianSplatRenderer : MonoBehaviour
         {
             keyValueMat = _radixSort.computeKeyValues;
         }
-        if (splatRenderOrder == null || splatRenderOrderPhoto == null)
+        if (splatRenderOrder == null)
         {
-            Debug.LogError("Splat Render Order textures are not assigned. Please assign RenderTextures.");
+            Debug.LogError("Splat Render Order texture is not assigned. Please assign a RenderTexture.");
             return false;
         }
         if (!EnsureRenderTextureCreated(splatRenderOrder, "Splat render order")
-            || !EnsureRenderTextureCreated(splatRenderOrderPhoto, "Splat render order photo")
             || !EnsureRenderTextureCreated(_radixSort.keyValues0, "RadixSort keyValues0")
             || !EnsureRenderTextureCreated(_radixSort.keyValues1, "RadixSort keyValues1")
             || !EnsureRenderTextureCreated(_radixSort.histograms, "RadixSort histograms")
@@ -941,7 +937,6 @@ public partial class GaussianSplatRenderer : MonoBehaviour
                 continue;
             }
             if (material.HasProperty("_GS_RenderOrder")) material.SetTexture("_GS_RenderOrder", splatRenderOrder);
-            if (material.HasProperty("_GS_RenderOrderPhoto")) material.SetTexture("_GS_RenderOrderPhoto", splatRenderOrderPhoto);
             if (material.HasProperty("_ActualSplatCount")) material.SetInt("_ActualSplatCount", actualCount);
         }
     }
@@ -978,7 +973,7 @@ public partial class GaussianSplatRenderer : MonoBehaviour
     {
         _sortedRenderer = null;
         GaussianSplatCombiner combined = ResolveCombiner();
-        if (combined == null || !combined.BindRenderOrder(splatRenderOrder, splatRenderOrderPhoto, out _sortedRenderer, out Material primaryMaterial, out Texture positions, out int count))
+        if (combined == null || !combined.BindRenderOrder(splatRenderOrder, out _sortedRenderer, out Material primaryMaterial, out Texture positions, out int count))
         {
             return false;
         }
@@ -1019,14 +1014,14 @@ public partial class GaussianSplatRenderer : MonoBehaviour
         keyValueMat.SetVector("_CameraPos", _sortedRenderer.transform.InverseTransformPoint(worldCameraPos));
     }
 
-    bool UpdateCombinedTexturesForSort(GaussianSplatCombiner combined, Vector3 screenCamPos, Vector3 lodCameraPos, Vector3 lodCameraForward, Vector3 photoCamPos, bool updatePhotoCameraColors, bool adaptLodSelection, bool useEditorOps)
+    bool UpdateCombinedTexturesForSort(GaussianSplatCombiner combined, Vector3 camPos, Vector3 camForward, bool useEditorOps)
     {
         return combined != null
-            && combined.UpdateTexturesWithPhotoFlag(_sceneSplats, _sceneLods, screenCamPos, lodCameraPos, lodCameraForward, photoCamPos, updatePhotoCameraColors, GetEffectiveCombinedLodSplatBudget(), adaptLodSelection, useEditorOps)
+            && combined.UpdateTextures(_sceneSplats, _sceneLods, camPos, camPos, camForward, GetEffectiveCombinedLodSplatBudget(), true, useEditorOps)
             && UpdateSortBinding();
     }
 
-    void SortCameraViews(Vector3 screenCamPos, Vector3 screenCamForward, Vector3 photoCamPos, bool sortPhotoCamera, bool useEditorOps)
+    void SortCameraViews(Vector3 camPos, Vector3 camForward, bool useEditorOps)
     {
         if (!EnsureInitialized())
         {
@@ -1036,84 +1031,41 @@ public partial class GaussianSplatRenderer : MonoBehaviour
         {
             return;
         }
-        GaussianSplatCombiner combined = IsCombinedRenderingMode() ? ResolveCombiner() : null;
-        if (IsCombinedRenderingMode() && combined != null)
-        {
-            combined.SetLodSplatTargetScale(GetEffectiveCombinedLodTargetScale());
-            combined.SetLodDirectionalBias(GetCombinedLodDirectionalBias());
-        }
-#if UNITY_EDITOR
-        if (useEditorOps)
-        {
-            if (IsCombinedRenderingMode() && (combined == null || !UpdateCombinedTexturesForSort(combined, screenCamPos, screenCamPos, screenCamForward, photoCamPos, sortPhotoCamera, true, true)))
-            {
-                return;
-            }
-            if (!IsCombinedRenderingMode() && !UpdateSortBinding())
-            {
-                return;
-            }
-            // Editor previews need a blocking full sort for the visible SceneView camera.
-            SetSortCameraPos(screenCamPos);
-            _radixSort.RunFullSortForEditor(splatRenderOrder, SCREEN_CAMERA_ID);
-            _completedCameraPos[SCREEN_CAMERA_ID] = QuantizePosition(screenCamPos);
-            _completedCameraWorldPos[SCREEN_CAMERA_ID] = screenCamPos;
-            _hasCompletedSort[SCREEN_CAMERA_ID] = true;
-            if (sortPhotoCamera)
-            {
-                SetSortCameraPos(photoCamPos);
-                _radixSort.RunFullSortForEditor(splatRenderOrderPhoto, PHOTO_CAMERA_ID);
-                _completedCameraPos[PHOTO_CAMERA_ID] = QuantizePosition(photoCamPos);
-                _completedCameraWorldPos[PHOTO_CAMERA_ID] = photoCamPos;
-                _hasCompletedSort[PHOTO_CAMERA_ID] = true;
-            }
-            OnScreenSortPublished();
-            return;
-        }
-#endif
 
         if (IsCombinedRenderingMode())
         {
-            if (combined == null || !UpdateCombinedTexturesForSort(combined, screenCamPos, screenCamPos, screenCamForward, photoCamPos, sortPhotoCamera, true, false))
+            GaussianSplatCombiner combined = ResolveCombiner();
+            if (combined == null)
             {
                 return;
             }
-            SetSortCameraPos(screenCamPos);
-            _radixSort.RunFullSort(splatRenderOrder, SCREEN_CAMERA_ID);
-            _completedCameraPos[SCREEN_CAMERA_ID] = QuantizePosition(screenCamPos);
-            _completedCameraWorldPos[SCREEN_CAMERA_ID] = screenCamPos;
-            _hasCompletedSort[SCREEN_CAMERA_ID] = true;
-            if (sortPhotoCamera)
+            combined.SetLodSplatTargetScale(GetEffectiveCombinedLodTargetScale());
+            combined.SetLodDirectionalBias(GetCombinedLodDirectionalBias());
+            if (!UpdateCombinedTexturesForSort(combined, camPos, camForward, useEditorOps))
             {
-                SetSortCameraPos(photoCamPos);
-                _radixSort.RunFullSort(splatRenderOrderPhoto, PHOTO_CAMERA_ID);
-                _completedCameraPos[PHOTO_CAMERA_ID] = QuantizePosition(photoCamPos);
-                _completedCameraWorldPos[PHOTO_CAMERA_ID] = photoCamPos;
-                _hasCompletedSort[PHOTO_CAMERA_ID] = true;
+                return;
             }
-            OnScreenSortPublished();
-            return;
         }
-
-        if (!UpdateSortBinding())
+        else if (!UpdateSortBinding())
         {
             return;
         }
 
-        SetSortCameraPos(screenCamPos);
-        _radixSort.RunFullSort(splatRenderOrder, SCREEN_CAMERA_ID);
-        _completedCameraPos[SCREEN_CAMERA_ID] = QuantizePosition(screenCamPos);
-        _completedCameraWorldPos[SCREEN_CAMERA_ID] = screenCamPos;
+        SetSortCameraPos(camPos);
+#if UNITY_EDITOR
+        if (useEditorOps)
+        {
+            // Editor previews need a blocking full sort for the visible SceneView camera.
+            _radixSort.RunFullSortForEditor(splatRenderOrder, SCREEN_CAMERA_ID);
+        }
+        else
+#endif
+        {
+            _radixSort.RunFullSort(splatRenderOrder, SCREEN_CAMERA_ID);
+        }
+        _completedCameraPos[SCREEN_CAMERA_ID] = QuantizePosition(camPos);
+        _completedCameraWorldPos[SCREEN_CAMERA_ID] = camPos;
         _hasCompletedSort[SCREEN_CAMERA_ID] = true;
-
-        if (sortPhotoCamera)
-        {
-            SetSortCameraPos(photoCamPos);
-            _radixSort.RunFullSort(splatRenderOrderPhoto, PHOTO_CAMERA_ID);
-            _completedCameraPos[PHOTO_CAMERA_ID] = QuantizePosition(photoCamPos);
-            _completedCameraWorldPos[PHOTO_CAMERA_ID] = photoCamPos;
-            _hasCompletedSort[PHOTO_CAMERA_ID] = true;
-        }
         OnScreenSortPublished();
     }
 
@@ -1144,8 +1096,7 @@ public partial class GaussianSplatRenderer : MonoBehaviour
             return;
         }
         Transform cameraTransform = camera.transform;
-        Vector3 camPos = cameraTransform.position;
-        SortCameraViews(camPos, cameraTransform.forward, camPos, false, false);
+        SortCameraViews(cameraTransform.position, cameraTransform.forward, false);
     }
 }
 

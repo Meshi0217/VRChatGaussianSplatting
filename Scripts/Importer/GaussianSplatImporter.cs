@@ -220,8 +220,6 @@ namespace GaussianSplatting
             Vector4 shRange,
             int actualSplatCount,
             float shBand,
-            Texture colorsCamera,
-            bool useCameraColorArray,
             Texture precomputedSort,
             int splatCount,
             int splatOffset)
@@ -244,11 +242,6 @@ namespace GaussianSplatting
             splatMat.SetVector("_GS_SH_Range", shRange);
             splatMat.SetInt("_ActualSplatCount", actualSplatCount);
             splatMat.SetFloat("_SHBand", shBand);
-
-            splatMat.SetTexture("_GS_ColorsCamera", colorsCamera);
-            splatMat.SetFloat("_GS_CameraColorArray", useCameraColorArray ? 1.0f : 0.0f);
-            splatMat.DisableKeyword("GS_CAMERA_COLOR_ARRAY");
-            splatMat.DisableKeyword("_GS_CAMERACOLORARRAY_ON");
 
             if (precomputedSort != null)
             {
@@ -870,8 +863,6 @@ namespace GaussianSplatting
                             0f),
                         n,
                         (float)effectiveDefaultSHBand,
-                        null,
-                        false,
                         options.precomputeSorting ? sortedTex : null,
                         passInfo.SplatCount,
                         passInfo.SplatOffset);

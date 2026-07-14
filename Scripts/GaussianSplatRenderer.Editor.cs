@@ -362,7 +362,7 @@ public partial class GaussianSplatRenderer
                         continue;
                     }
                 }
-                renderer.SortCameraViews(cameraPosition, cameraForward, cameraPosition, false, true);
+                renderer.SortCameraViews(cameraPosition, cameraForward, true);
             }
         }
     }
@@ -396,7 +396,7 @@ public partial class GaussianSplatRenderer
 
     bool HasEditorSortRenderOrderTextures()
     {
-        return splatRenderOrder != null && splatRenderOrderPhoto != null;
+        return splatRenderOrder != null;
     }
 
     void OnDrawGizmos()
@@ -994,7 +994,6 @@ public partial class GaussianSplatRenderer
         resourcesChanged |= EnsureSortRenderTexture(ref radixSort.histograms, resourceFolderPath, assetPrefix + "_Histograms", requiredHistogramWidth, requiredHistogramHeight, RenderTextureFormat.ARGBFloat, false, 1);
         resourcesChanged |= EnsureSortRenderTexture(ref radixSort.prefixSums, resourceFolderPath, assetPrefix + "_PrefixSums", requiredWidth, requiredHeight, RenderTextureFormat.RFloat, true, 1);
         resourcesChanged |= EnsureSortRenderTexture(ref splatRenderOrder, resourceFolderPath, assetPrefix + "_SplatRenderOrderScreen", requiredWidth, requiredHeight, RenderTextureFormat.RFloat, false, 1);
-        resourcesChanged |= EnsureSortRenderTexture(ref splatRenderOrderPhoto, resourceFolderPath, assetPrefix + "_SplatRenderOrderPhoto", requiredWidth, requiredHeight, RenderTextureFormat.RFloat, false, 1);
         if (resourcesChanged)
         {
             EditorUtility.SetDirty(radixSort);

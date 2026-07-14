@@ -1,21 +1,14 @@
 #include "../RadixSort/Utils.cginc"
 
 Texture2D _GS_Positions, _GS_Scales, _GS_Rotations, _GS_Colors, _GS_SH;
-Texture2D _GS_ColorsCamera;
 float4 _GS_SH_Min;
 float4 _GS_SH_Range;
 Texture2D<float> _GS_RenderOrder;
-Texture2D<float> _GS_RenderOrderPhoto;
 Texture2DArray<float> _GS_RenderOrderPrecomputed;
-Texture2D<float> _GS_RenderOrderMirror;
 float4 _GS_Positions_TexelSize;
 float4 _GS_SH_TexelSize;
 float4 _GS_RenderOrder_TexelSize;
 float4 _GS_RenderOrderPrecomputed_TexelSize;
-float _VRChatCameraMode;
-float _VRChatMirrorMode;
-float _GS_CameraColorArray;
-float3 _MirrorCameraPos, _VRChatMirrorCameraPos;
 float _GaussianMul;
 float _ThinThreshold;
 float _AntiAliasing;
@@ -147,7 +140,7 @@ uint2 GetSplatCoord(uint id)
 
 float4 LoadSplatColor(uint2 coord)
 {
-    return _VRChatCameraMode > 0.5 ? _GS_ColorsCamera[coord] : _GS_Colors[coord];
+    return _GS_Colors[coord];
 }
 
 SplatData LoadSplatData(uint id) {
@@ -272,22 +265,7 @@ SplatData LoadSplatDataRenderOrder(uint id) {
     bool valid = true;
     if(validOrder) { // if valid order texture
         uint2 coord1 = IndexToUV(id);
-        bool inMirror = false;//_VRChatMirrorMode > 0 && all(abs(_VRChatMirrorCameraPos - _MirrorCameraPos) < 1e-4);
-        if(inMirror) {
-            valid = false;
-            //reordered_id = _GS_RenderOrderMirror[coord1];
-        } else {
-            float orderValue;
-            if (_VRChatCameraMode > 0.5)
-            {
-                orderValue = _GS_RenderOrderPhoto[coord1];
-            }
-            else
-            {
-                orderValue = _GS_RenderOrder[coord1];
-            }
-            reordered_id = (uint)round(max(orderValue, 0.0));
-        }
+        reordered_id = (uint)round(max(_GS_RenderOrder[coord1], 0.0));
     } else {
         reordered_id = pcg(reordered_id) % actualSplatCount; // randomize order for alpha blending to somewhat work
     }
