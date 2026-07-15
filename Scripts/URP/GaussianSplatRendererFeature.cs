@@ -77,14 +77,23 @@ namespace GaussianSplatting
                 UniversalRenderingData renderingData = frameData.Get<UniversalRenderingData>();
                 UniversalLightData lightData = frameData.Get<UniversalLightData>();
 
+                TextureHandle cameraColor = resourceData.activeColorTexture;
+                TextureHandle cameraDepth = resourceData.activeDepthTexture;
+
+                // No sRGB correction (Android's fake-sRGB conversion, or a no-sRGB import): the splats
+                // are a plain back-to-front draw with no grab passes, so skip the camera-colour copies,
+                // the empty ToSRGB/ToLinear passes and the intermediate texture. Just draw the splats.
+                if (!GaussianSplatRuntimeRegistry.UsesGrabPasses)
+                {
+                    DrawTag(renderGraph, cameraColor, cameraDepth, renderingData, cameraData, lightData, SplatTag, MinQueue, MaxQueue, "GS Splats");
+                    return;
+                }
+
                 // The copies below sample the camera colour, which is not allowed against the backbuffer.
                 if (resourceData.isActiveTargetBackBuffer)
                 {
                     return;
                 }
-
-                TextureHandle cameraColor = resourceData.activeColorTexture;
-                TextureHandle cameraDepth = resourceData.activeDepthTexture;
 
                 RenderTextureDescriptor copyDesc = cameraData.cameraTargetDescriptor;
                 copyDesc.depthBufferBits = 0;
@@ -193,21 +202,19 @@ namespace GaussianSplatting
                 // they own their own ordering, so they run after URP's transparent pass rather than
                 // inside it.
                 renderPassEvent = RenderPassEvent.AfterRenderingTransparents,
-
-                // This pass samples the camera colour (the grab-pass copies). When URP renders
-                // straight to the backbuffer -- which it does in Forward with no post/MSAA/HDR, i.e.
-                // the mobile tier -- there is no sampleable colour texture, activeColorTexture is the
-                // backbuffer, and RecordRenderGraph bails out, so nothing draws. That is exactly why
-                // splats appeared on the PC (Deferred, always an intermediate texture) but not on
-                // Android/mobile (Forward, backbuffer). Forcing an intermediate texture fixes it.
-                // URP notes a perf cost for this on untethered VR; it is unavoidable for the
-                // grab-pass sRGB path, which has to read the colour target.
-                requiresIntermediateTexture = true,
             };
         }
 
         public override void AddRenderPasses(ScriptableRenderer renderer, ref RenderingData renderingData)
         {
+            // Only the grab-pass (sRGB) path samples the camera colour, and only that path needs an
+            // intermediate texture: URP renders straight to the backbuffer in Forward with no
+            // post/MSAA/HDR (the mobile tier), where activeColorTexture is the backbuffer and the
+            // copies cannot run. Requesting it unconditionally cost every mobile frame an intermediate
+            // texture even for the back-to-front path that never reads the colour target. The registry
+            // is already up to date here -- the sort runs from beginCameraRendering, before this.
+            // URP reads requiresIntermediateTexture off the enqueued passes, so setting it here works.
+            _pass.requiresIntermediateTexture = GaussianSplatRuntimeRegistry.UsesGrabPasses;
             renderer.EnqueuePass(_pass);
         }
     }
