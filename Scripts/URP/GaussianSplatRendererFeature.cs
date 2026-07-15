@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Rendering;
 using UnityEngine.Rendering.RenderGraphModule;
@@ -26,6 +25,13 @@ namespace GaussianSplatting
     /// _GS_LinearBackground stays bound through to ToLinear, which reads it as well -- that mirrors
     /// GrabPass's global texture lifetime and is why the copy is not folded into ToSRGB.
     ///
+    /// Each step is its own raster pass. An unsafe pass with manual SetRenderTarget was tried first,
+    /// and it broke single-pass stereo: the manual target binding and the Blitter copies only touched
+    /// one eye slice, so VR (MockHMD and Quest alike) came out black. Raster passes let URP set up XR
+    /// single-pass for every draw and copy, at the cost of splitting what was one pass into several --
+    /// which is fine here, since each step reads and writes different textures anyway (the only reason
+    /// the unsafe pass existed was to read and write the camera colour in one pass).
+    ///
     /// Requires an alpha channel in the camera colour target. URP's default (HDR on, 32-bit) picks
     /// B10G11R11_UFloatPack32, which has none, and the whole front-to-back scheme then fails
     /// silently. GaussianSplatUrpSetup checks for this.
@@ -49,32 +55,14 @@ namespace GaussianSplatting
             const int MinQueue = 2501;
             const int MaxQueue = 5000;
 
-            class PassData
+            class CopyPassData
             {
-                public TextureHandle cameraColor;
-                public TextureHandle cameraDepth;
-                public TextureHandle linearBackground;
-                public TextureHandle srgbBackground;
-                public TextureHandle grabTexture;
-                public RendererListHandle toSrgb;
-                public RendererListHandle toLinear;
+                public TextureHandle source;
+            }
 
-                // Render Graph pools PassData objects and hands them back without resetting fields,
-                // so these have to be cleared on every record. Leaving them to accumulate meant the
-                // second camera of a frame (Scene view alongside Game view) inherited the first
-                // camera's renderer lists and tried to execute them again:
-                //   "Trying to execute a RendererList that was already executed during this frame."
-                public readonly List<RendererListHandle> splatSegments = new List<RendererListHandle>();
-                public readonly List<RendererListHandle> alphaMasks = new List<RendererListHandle>();
-
-                public void Reset()
-                {
-                    splatSegments.Clear();
-                    alphaMasks.Clear();
-                    // Only assigned when this splat has alpha-mask passes; must not survive a record
-                    // where it does not.
-                    grabTexture = TextureHandle.nullHandle;
-                }
+            class DrawPassData
+            {
+                public RendererListHandle list;
             }
 
             public override void RecordRenderGraph(RenderGraph renderGraph, ContextContainer frameData)
@@ -89,11 +77,14 @@ namespace GaussianSplatting
                 UniversalRenderingData renderingData = frameData.Get<UniversalRenderingData>();
                 UniversalLightData lightData = frameData.Get<UniversalLightData>();
 
-                // Reading back from the backbuffer is not allowed, and the copies below are reads.
+                // The copies below sample the camera colour, which is not allowed against the backbuffer.
                 if (resourceData.isActiveTargetBackBuffer)
                 {
                     return;
                 }
+
+                TextureHandle cameraColor = resourceData.activeColorTexture;
+                TextureHandle cameraDepth = resourceData.activeDepthTexture;
 
                 RenderTextureDescriptor copyDesc = cameraData.cameraTargetDescriptor;
                 copyDesc.depthBufferBits = 0;
@@ -101,59 +92,76 @@ namespace GaussianSplatting
                 copyDesc.useMipMap = false;
                 copyDesc.autoGenerateMips = false;
 
-                using (var builder = renderGraph.AddUnsafePass<PassData>("Gaussian Splats", out PassData passData))
+                CopyToGlobal(renderGraph, cameraColor, copyDesc, "_GS_LinearBackground", LinearBackgroundId);
+                DrawTag(renderGraph, cameraColor, cameraDepth, renderingData, cameraData, lightData, ToSrgbTag, MinQueue, MaxQueue, "GS ToSRGB");
+
+                int[] maskQueues = GaussianSplatRuntimeRegistry.MaskRenderQueues;
+                int segmentStart = MinQueue;
+                for (int i = 0; i < maskQueues.Length; i++)
                 {
-                    passData.Reset();
-                    passData.cameraColor = resourceData.activeColorTexture;
-                    passData.cameraDepth = resourceData.activeDepthTexture;
-                    builder.UseTexture(passData.cameraColor, AccessFlags.ReadWrite);
-                    builder.UseTexture(passData.cameraDepth, AccessFlags.ReadWrite);
-
-                    passData.linearBackground = UniversalRenderer.CreateRenderGraphTexture(renderGraph, copyDesc, "_GS_LinearBackground", false);
-                    passData.srgbBackground = UniversalRenderer.CreateRenderGraphTexture(renderGraph, copyDesc, "_GS_SRGBBackground", false);
-                    builder.UseTexture(passData.linearBackground, AccessFlags.ReadWrite);
-                    builder.UseTexture(passData.srgbBackground, AccessFlags.ReadWrite);
-
-                    int[] maskQueues = GaussianSplatRuntimeRegistry.MaskRenderQueues;
-                    if (maskQueues.Length > 0)
+                    int maskQueue = maskQueues[i];
+                    if (maskQueue < segmentStart || maskQueue > MaxQueue)
                     {
-                        passData.grabTexture = UniversalRenderer.CreateRenderGraphTexture(renderGraph, copyDesc, "_GS_GrabTexture", false);
-                        builder.UseTexture(passData.grabTexture, AccessFlags.ReadWrite);
+                        continue;
                     }
+                    DrawTag(renderGraph, cameraColor, cameraDepth, renderingData, cameraData, lightData, SplatTag, segmentStart, maskQueue - 1, "GS Splats");
+                    CopyToGlobal(renderGraph, cameraColor, copyDesc, "_GS_GrabTexture", GrabTextureId);
+                    DrawTag(renderGraph, cameraColor, cameraDepth, renderingData, cameraData, lightData, AlphaMaskTag, maskQueue, maskQueue, "GS AlphaMask");
+                    segmentStart = maskQueue + 1;
+                }
+                DrawTag(renderGraph, cameraColor, cameraDepth, renderingData, cameraData, lightData, SplatTag, segmentStart, MaxQueue, "GS Splats");
 
-                    passData.toSrgb = CreateList(renderGraph, renderingData, cameraData, lightData, ToSrgbTag, MinQueue, MaxQueue);
-                    passData.toLinear = CreateList(renderGraph, renderingData, cameraData, lightData, ToLinearTag, MinQueue, MaxQueue);
-                    builder.UseRendererList(passData.toSrgb);
-                    builder.UseRendererList(passData.toLinear);
+                CopyToGlobal(renderGraph, cameraColor, copyDesc, "_GS_SRGBBackground", SrgbBackgroundId);
+                DrawTag(renderGraph, cameraColor, cameraDepth, renderingData, cameraData, lightData, ToLinearTag, MinQueue, MaxQueue, "GS ToLinear");
+            }
 
-                    // Split the splat draw around each mask queue so a colour copy can land in between.
-                    int segmentStart = MinQueue;
-                    for (int i = 0; i < maskQueues.Length; i++)
-                    {
-                        int maskQueue = maskQueues[i];
-                        if (maskQueue < segmentStart || maskQueue > MaxQueue)
-                        {
-                            continue;
-                        }
-                        RendererListHandle segment = CreateList(renderGraph, renderingData, cameraData, lightData, SplatTag, segmentStart, maskQueue - 1);
-                        RendererListHandle mask = CreateList(renderGraph, renderingData, cameraData, lightData, AlphaMaskTag, maskQueue, maskQueue);
-                        builder.UseRendererList(segment);
-                        builder.UseRendererList(mask);
-                        passData.splatSegments.Add(segment);
-                        passData.alphaMasks.Add(mask);
-                        segmentStart = maskQueue + 1;
-                    }
-
-                    RendererListHandle tail = CreateList(renderGraph, renderingData, cameraData, lightData, SplatTag, segmentStart, MaxQueue);
-                    builder.UseRendererList(tail);
-                    passData.splatSegments.Add(tail);
-
-                    // SetGlobalTexture below is global state, and an empty scene must not cull the pass
-                    // away while a splat is still bound.
+            // Copies the camera colour into a new texture and binds it as a global for the passes that
+            // follow. As a raster pass the blit runs under XR single-pass, so it copies both eye slices.
+            static void CopyToGlobal(RenderGraph renderGraph, TextureHandle cameraColor, RenderTextureDescriptor desc, string name, int propertyId)
+            {
+                TextureHandle copy = UniversalRenderer.CreateRenderGraphTexture(renderGraph, desc, name, false);
+                using (var builder = renderGraph.AddRasterRenderPass<CopyPassData>(name, out CopyPassData passData))
+                {
+                    passData.source = cameraColor;
+                    builder.UseTexture(cameraColor, AccessFlags.Read);
+                    builder.SetRenderAttachment(copy, 0, AccessFlags.Write);
+                    builder.SetGlobalTextureAfterPass(copy, propertyId);
                     builder.AllowGlobalStateModification(true);
                     builder.AllowPassCulling(false);
+                    builder.SetRenderFunc((CopyPassData data, RasterGraphContext context) =>
+                        Blitter.BlitTexture(context.cmd, data.source, new Vector4(1f, 1f, 0f, 0f), 0f, false));
+                }
+            }
 
-                    builder.SetRenderFunc((PassData data, UnsafeGraphContext context) => Execute(data, context));
+            static void DrawTag(
+                RenderGraph renderGraph,
+                TextureHandle cameraColor,
+                TextureHandle cameraDepth,
+                UniversalRenderingData renderingData,
+                UniversalCameraData cameraData,
+                UniversalLightData lightData,
+                ShaderTagId tag,
+                int lowerQueue,
+                int upperQueue,
+                string name)
+            {
+                RendererListHandle list = CreateList(renderGraph, renderingData, cameraData, lightData, tag, lowerQueue, upperQueue);
+                using (var builder = renderGraph.AddRasterRenderPass<DrawPassData>(name, out DrawPassData passData))
+                {
+                    passData.list = list;
+                    builder.UseRendererList(list);
+                    // Write, not clear: the camera colour and depth carry the scene forward, which is
+                    // what the splats blend against and what the mask pass tests. Depth is Write so the
+                    // mask pass can put its stencil there.
+                    builder.SetRenderAttachment(cameraColor, 0, AccessFlags.Write);
+                    builder.SetRenderAttachmentDepth(cameraDepth, AccessFlags.Write);
+                    // The splat and fullscreen shaders sample _GS_*Background as globals bound by
+                    // CopyToGlobal above.
+                    builder.UseAllGlobalTextures(true);
+                    builder.AllowGlobalStateModification(true);
+                    builder.AllowPassCulling(false);
+                    builder.SetRenderFunc((DrawPassData data, RasterGraphContext context) =>
+                        context.cmd.DrawRendererList(data.list));
                 }
             }
 
@@ -172,36 +180,6 @@ namespace GaussianSplatting
                 DrawingSettings drawingSettings = RenderingUtils.CreateDrawingSettings(tag, renderingData, cameraData, lightData, SortingCriteria.RenderQueue);
                 FilteringSettings filteringSettings = new FilteringSettings(new RenderQueueRange(lowerQueue, upperQueue));
                 return renderGraph.CreateRendererList(new RendererListParams(renderingData.cullResults, drawingSettings, filteringSettings));
-            }
-
-            static void Execute(PassData data, UnsafeGraphContext context)
-            {
-                CommandBuffer cmd = CommandBufferHelpers.GetNativeCommandBuffer(context.cmd);
-
-                Blitter.BlitCameraTexture(cmd, data.cameraColor, data.linearBackground);
-                cmd.SetGlobalTexture(LinearBackgroundId, data.linearBackground);
-
-                context.cmd.SetRenderTarget(data.cameraColor, data.cameraDepth);
-                context.cmd.DrawRendererList(data.toSrgb);
-
-                for (int i = 0; i < data.splatSegments.Count; i++)
-                {
-                    context.cmd.DrawRendererList(data.splatSegments[i]);
-
-                    if (i < data.alphaMasks.Count)
-                    {
-                        Blitter.BlitCameraTexture(cmd, data.cameraColor, data.grabTexture);
-                        cmd.SetGlobalTexture(GrabTextureId, data.grabTexture);
-                        context.cmd.SetRenderTarget(data.cameraColor, data.cameraDepth);
-                        context.cmd.DrawRendererList(data.alphaMasks[i]);
-                    }
-                }
-
-                Blitter.BlitCameraTexture(cmd, data.cameraColor, data.srgbBackground);
-                cmd.SetGlobalTexture(SrgbBackgroundId, data.srgbBackground);
-
-                context.cmd.SetRenderTarget(data.cameraColor, data.cameraDepth);
-                context.cmd.DrawRendererList(data.toLinear);
             }
         }
 
