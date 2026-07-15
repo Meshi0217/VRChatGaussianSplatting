@@ -71,6 +71,10 @@ public partial class GaussianSplatRenderer : MonoBehaviour
     [System.NonSerialized] int _primaryCheckGeneration = -1;
     [System.NonSerialized] bool _isPrimaryRendererCached;
 
+    // renderer.materials array cache, keyed by renderer identity. See GetRendererMaterialsForWrite.
+    [System.NonSerialized] MeshRenderer _cachedMaterialsRenderer;
+    [System.NonSerialized] Material[] _cachedRuntimeMaterials;
+
     [HideInInspector, SerializeField] GameObject[] cachedSceneLODObjects;
     [SerializeField] GaussianSplatCombiner combiner;
     [Tooltip("Combined LOD splat cap for PC builds. 0 disables the cap.")]
@@ -263,7 +267,17 @@ public partial class GaussianSplatRenderer : MonoBehaviour
         }
 #endif
 
-        return renderer.materials;
+        // renderer.materials allocates a fresh array every call, and this runs per frame from the sort
+        // binding. The renderer's instantiated materials are stable at runtime -- nothing reassigns its
+        // material array while playing -- so cache the array by renderer identity. The cached entries
+        // are the renderer's live instances, so the render-order writes downstream still land on what
+        // actually draws. A different renderer (splat switch) misses the key and refetches.
+        if (!ReferenceEquals(renderer, _cachedMaterialsRenderer) || _cachedRuntimeMaterials == null)
+        {
+            _cachedMaterialsRenderer = renderer;
+            _cachedRuntimeMaterials = renderer.materials;
+        }
+        return _cachedRuntimeMaterials;
     }
 
     void RefreshRuntimeCache()

@@ -1,8 +1,8 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 #if UNITY_EDITOR
 using System;
-using System.Collections.Generic;
 using UnityEditor;
 using UnityEngine.SceneManagement;
 #endif
@@ -293,6 +293,9 @@ public partial class GaussianSplatCombiner : MonoBehaviour
         return renderer != null && primaryMaterial != null && primaryMaterial.HasProperty("_SplatCount");
     }
 
+    // renderer.materials array cache, keyed by renderer identity. See GetRendererMaterialsForWrite.
+    [System.NonSerialized] readonly Dictionary<MeshRenderer, Material[]> _runtimeMaterialsByRenderer = new Dictionary<MeshRenderer, Material[]>();
+
     Material[] GetRendererMaterialsForRead(MeshRenderer renderer)
     {
         if (renderer == null)
@@ -317,7 +320,17 @@ public partial class GaussianSplatCombiner : MonoBehaviour
         }
 #endif
 
-        return renderer.materials;
+        // renderer.materials allocates a fresh array every call, and BindRenderOrder runs it per frame
+        // for the combined parent and every chunk renderer. The instantiated material arrays are stable
+        // at runtime -- nothing reassigns renderer materials while playing -- so cache them by renderer
+        // identity. The cached entries are the renderer's live instances, so the render-order writes
+        // downstream still land on what actually draws.
+        if (!_runtimeMaterialsByRenderer.TryGetValue(renderer, out Material[] cached) || cached == null)
+        {
+            cached = renderer.materials;
+            _runtimeMaterialsByRenderer[renderer] = cached;
+        }
+        return cached;
     }
 
     bool EnsureRenderTextureCreated(RenderTexture renderTexture, string label)
