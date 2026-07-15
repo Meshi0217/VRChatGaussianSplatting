@@ -63,6 +63,14 @@ public partial class GaussianSplatRenderer : MonoBehaviour
     [System.NonSerialized] GaussianSplatObject[] _sceneLods = new GaussianSplatObject[0];
     [System.NonSerialized] bool _runtimeCacheValid;
 
+    // Primary-instance check cache. IsPrimaryRendererInstance() scans every GaussianSplatRenderer in
+    // the scene, which is a per-frame allocation on a hot path (twice a frame, per camera). The set of
+    // renderers only changes when one enables or disables, so bump a shared generation counter on those
+    // transitions and rescan only when this instance's cached generation is stale.
+    static int s_registryGeneration;
+    [System.NonSerialized] int _primaryCheckGeneration = -1;
+    [System.NonSerialized] bool _isPrimaryRendererCached;
+
     [HideInInspector, SerializeField] GameObject[] cachedSceneLODObjects;
     [SerializeField] GaussianSplatCombiner combiner;
     [Tooltip("Combined LOD splat cap for PC builds. 0 disables the cap.")]
@@ -857,6 +865,18 @@ public partial class GaussianSplatRenderer : MonoBehaviour
 
     bool IsPrimaryRendererInstance()
     {
+        // Only rescan the scene when the renderer set changed; otherwise reuse the last verdict.
+        if (_primaryCheckGeneration == s_registryGeneration)
+        {
+            return _isPrimaryRendererCached;
+        }
+        _primaryCheckGeneration = s_registryGeneration;
+        _isPrimaryRendererCached = ScanPrimaryRendererInstance();
+        return _isPrimaryRendererCached;
+    }
+
+    bool ScanPrimaryRendererInstance()
+    {
         GaussianSplatRenderer[] renderers = UnityEngine.Object.FindObjectsByType<GaussianSplatRenderer>(FindObjectsSortMode.None);
         if (renderers == null || renderers.Length <= 1)
         {
@@ -1129,12 +1149,15 @@ public partial class GaussianSplatRenderer : MonoBehaviour
 
     void OnEnable()
     {
+        // The renderer set changed: force every instance to re-evaluate which one is primary.
+        s_registryGeneration++;
         RenderPipelineManager.beginCameraRendering -= OnBeginCameraRendering;
         RenderPipelineManager.beginCameraRendering += OnBeginCameraRendering;
     }
 
     void OnDisable()
     {
+        s_registryGeneration++;
         RenderPipelineManager.beginCameraRendering -= OnBeginCameraRendering;
         GaussianSplatRuntimeRegistry.Clear();
     }
