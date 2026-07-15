@@ -26,16 +26,34 @@ namespace GaussianSplatting.Editor
             {
                 return;
             }
+            ConvertScene(scene);
+        }
 
+        // The build conversion, minus the build-only guards, so the open scene can be converted in the
+        // editor. This is the only way to see the no-geometry path without a device build: the
+        // geometry-shader splats carry '#pragma exclude_renderers gles', so an Android-target editor
+        // (or a mobile GPU) drops them entirely, and OnProcessScene never runs in play mode. Converting
+        // in-editor lets the desktop GPU (with MockHMD) render exactly what a Quest build would.
+        [UnityEditor.MenuItem("Gaussian Splatting/Convert Open Scene To Android No-Geometry (preview)")]
+        static void ConvertOpenScenePreview()
+        {
+            Scene scene = UnityEditor.SceneManagement.EditorSceneManager.GetActiveScene();
+            int converted = ConvertScene(scene);
+            Debug.Log("Gaussian Splatting: converted " + converted + " splat renderer(s) in '" + scene.name +
+                      "' to the Android no-geometry path. This is an unsaved in-editor preview -- enter Play mode to test (MockHMD included), then reopen the scene WITHOUT saving to discard it.");
+        }
+
+        static int ConvertScene(Scene scene)
+        {
             Shader fallbackShader = Shader.Find(FakeSrgbNoGeomShaderName);
             if (fallbackShader == null)
             {
-                Debug.LogWarning("Gaussian splat Android build conversion skipped: shader '" + FakeSrgbNoGeomShaderName + "' was not found.");
-                return;
+                Debug.LogWarning("Gaussian splat Android conversion skipped: shader '" + FakeSrgbNoGeomShaderName + "' was not found.");
+                return 0;
             }
             if (HasGaussianSplats(scene))
             {
-                GaussianSplatRenderer renderer = GaussianSplatRenderer.EnsureSceneRendererExists(scene);
+                GaussianSplatRenderer.EnsureSceneRendererExists(scene);
                 ApplyAndroidLowQuality(scene);
                 DisableAndroidCameraHdr(scene);
             }
@@ -53,11 +71,7 @@ namespace GaussianSplatting.Editor
                     }
                 }
             }
-
-            if (convertedCount > 0)
-            {
-                Debug.Log("Converted " + convertedCount + " Gaussian splat renderer(s) to Android fake-sRGB no-geometry meshes in scene '" + scene.name + "'.");
-            }
+            return convertedCount;
         }
 
         static void ApplyAndroidLowQuality(Scene scene)
