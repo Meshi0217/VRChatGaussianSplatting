@@ -866,6 +866,18 @@ public partial class GaussianSplatRenderer
         {
             EditorUtility.SetDirty(radixSort);
         }
+        ComputeShader sortCompute = AssetDatabase.LoadAssetAtPath<ComputeShader>("Assets/VRChatGaussianSplatting/RadixSort/RadixSortCompute.compute");
+        if (sortCompute != null && radixSort.radixSortCompute != sortCompute)
+        {
+            radixSort.radixSortCompute = sortCompute;
+            EditorUtility.SetDirty(radixSort);
+        }
+        Shader copyFromBufferShader = AssetDatabase.LoadAssetAtPath<Shader>("Assets/VRChatGaussianSplatting/RadixSort/CopyRenderOrderFromBuffer.shader");
+        if (copyFromBufferShader != null && radixSort.copyOrderFromBufferShader != copyFromBufferShader)
+        {
+            radixSort.copyOrderFromBufferShader = copyFromBufferShader;
+            EditorUtility.SetDirty(radixSort);
+        }
     }
 
     bool EnsureSortRenderTexture(ref RenderTexture targetTexture, string folderPath, string assetName, int width, int height, RenderTextureFormat format, bool useMipMap, int volumeDepth)

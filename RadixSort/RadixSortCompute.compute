@@ -1,0 +1,224 @@
+// Compute-shader replacement for the fragment-blit radix sort. Same ordering contract as the
+// blit path: keys are the raw bits of the positive camera distance (bit order == numeric order),
+// only bits 7..30 participate (three 8-bit digits), and ties keep original-index order (the sort
+// is stable and InitKeys seeds ids in index order). The blit path gathers through a mip pyramid,
+// costing tens of texture loads per element per round; this path is three linear read+write
+// passes with LDS histograms, which is why it replaces it.
+//
+// Layout: THREADS threads per group, ELEMS elements per thread, contiguous per thread so local
+// index order equals global index order (required for stability).
+
+#pragma kernel InitKeys
+#pragma kernel BuildHistogram
+#pragma kernel ScanHistograms
+#pragma kernel Scatter
+
+#include "../Shaders/GSData.cginc"
+
+#define THREADS 256
+#define ELEMS 4
+#define GROUP_ELEMS 1024 // THREADS * ELEMS
+#define RADIX 256
+#define DIGIT_BITS 8
+#define SENTINEL 0xFFFFFFFFu // > any positive-float key (their MSB is 0), so pads always sink last
+
+RWStructuredBuffer<uint2> _KeysSrc; // x = distance bits, y = splat id
+RWStructuredBuffer<uint2> _KeysDst;
+// [digit * _GroupCount + group]: counts after BuildHistogram, exclusive global offsets after ScanHistograms
+RWStructuredBuffer<uint> _GroupHistograms;
+
+float3 _CameraPos;
+int _ElementCount;
+int _GroupCount;
+int _ShiftBits;
+
+[numthreads(THREADS, 1, 1)]
+void InitKeys(uint3 dtid : SV_DispatchThreadID)
+{
+    uint i = dtid.x;
+    if (i >= (uint)_ElementCount)
+    {
+        return;
+    }
+    // Mirrors ComputeD in GSKeyValue.shader exactly.
+    float3 mean = _GS_Positions[GetSplatCoord(i)].xyz;
+    float dist = length(_CameraPos - mean);
+    if (isnan(dist) || isinf(dist))
+    {
+        dist = 1e20;
+    }
+    _KeysDst[i] = uint2(asuint(dist), i);
+}
+
+groupshared uint gs_hist[RADIX];
+
+[numthreads(THREADS, 1, 1)]
+void BuildHistogram(uint3 gid : SV_GroupID, uint3 gtid : SV_GroupThreadID)
+{
+    uint t = gtid.x;
+    uint g = gid.x;
+    gs_hist[t] = 0u;
+    GroupMemoryBarrierWithGroupSync();
+    [unroll]
+    for (uint e = 0u; e < ELEMS; e++)
+    {
+        uint i = g * GROUP_ELEMS + t * ELEMS + e;
+        if (i < (uint)_ElementCount)
+        {
+            uint digit = (_KeysSrc[i].x >> (uint)_ShiftBits) & (RADIX - 1u);
+            InterlockedAdd(gs_hist[digit], 1u);
+        }
+    }
+    GroupMemoryBarrierWithGroupSync();
+    _GroupHistograms[t * (uint)_GroupCount + g] = gs_hist[t];
+}
+
+groupshared uint gs_bucketTotal[RADIX];
+groupshared uint gs_bucketBase[RADIX];
+
+// Single-group kernel: turns per-(digit, group) counts into exclusive global offsets. Each thread
+// owns one digit and walks the groups serially -- the table is tiny (groupCount * 256 uints), so
+// this is bandwidth-trivial even though it is not a fancy parallel scan.
+[numthreads(RADIX, 1, 1)]
+void ScanHistograms(uint3 gtid : SV_GroupThreadID)
+{
+    uint digit = gtid.x;
+    uint groupCount = (uint)_GroupCount;
+    uint total = 0u;
+    uint g;
+    for (g = 0u; g < groupCount; g++)
+    {
+        total += _GroupHistograms[digit * groupCount + g];
+    }
+    gs_bucketTotal[digit] = total;
+    GroupMemoryBarrierWithGroupSync();
+    if (digit == 0u)
+    {
+        uint running = 0u;
+        for (uint d = 0u; d < RADIX; d++)
+        {
+            gs_bucketBase[d] = running;
+            running += gs_bucketTotal[d];
+        }
+    }
+    GroupMemoryBarrierWithGroupSync();
+    uint offset = gs_bucketBase[digit];
+    for (g = 0u; g < groupCount; g++)
+    {
+        uint index = digit * groupCount + g;
+        uint count = _GroupHistograms[index];
+        _GroupHistograms[index] = offset;
+        offset += count;
+    }
+}
+
+groupshared uint gs_key[GROUP_ELEMS];
+groupshared uint gs_id[GROUP_ELEMS];
+groupshared uint gs_scan[THREADS];
+groupshared uint gs_digitStart[RADIX];
+groupshared uint gs_globalBase[RADIX];
+
+[numthreads(THREADS, 1, 1)]
+void Scatter(uint3 gid : SV_GroupID, uint3 gtid : SV_GroupThreadID)
+{
+    uint t = gtid.x;
+    uint g = gid.x;
+    uint elementCount = (uint)_ElementCount;
+    uint shiftBits = (uint)_ShiftBits;
+    uint e;
+
+    gs_globalBase[t] = _GroupHistograms[t * (uint)_GroupCount + g];
+    gs_digitStart[t] = 0u;
+
+    // Load this group's elements; lanes past the element count become sentinels. Sentinels have
+    // every bit set, so each 1-bit split below keeps them behind every real element, and they are
+    // skipped at scatter time -- the global offsets never budget for them.
+    [unroll]
+    for (e = 0u; e < ELEMS; e++)
+    {
+        uint local = t * ELEMS + e;
+        uint i = g * GROUP_ELEMS + local;
+        uint2 keyValue = i < elementCount ? _KeysSrc[i] : uint2(SENTINEL, SENTINEL);
+        gs_key[local] = keyValue.x;
+        gs_id[local] = keyValue.y;
+    }
+    GroupMemoryBarrierWithGroupSync();
+
+    // Stable local sort of the 1024 elements by the current 8-bit digit: 8 stable 1-bit splits.
+    for (uint bit = 0u; bit < DIGIT_BITS; bit++)
+    {
+        uint bitMask = 1u << (shiftBits + bit);
+
+        // Pull this thread's elements into registers before anything is overwritten.
+        uint keys[ELEMS];
+        uint ids[ELEMS];
+        uint flags[ELEMS];
+        uint threadOnes = 0u;
+        [unroll]
+        for (e = 0u; e < ELEMS; e++)
+        {
+            uint local = t * ELEMS + e;
+            keys[e] = gs_key[local];
+            ids[e] = gs_id[local];
+            flags[e] = (keys[e] & bitMask) != 0u ? 1u : 0u;
+            threadOnes += flags[e];
+        }
+        gs_scan[t] = threadOnes;
+        GroupMemoryBarrierWithGroupSync();
+
+        // Inclusive Hillis-Steele scan of the per-thread one-counts.
+        [unroll]
+        for (uint step = 1u; step < THREADS; step <<= 1u)
+        {
+            uint partial = t >= step ? gs_scan[t - step] : 0u;
+            GroupMemoryBarrierWithGroupSync();
+            gs_scan[t] += partial;
+            GroupMemoryBarrierWithGroupSync();
+        }
+        uint totalOnes = gs_scan[THREADS - 1u];
+        uint onesBefore = gs_scan[t] - threadOnes;
+        uint numZeros = GROUP_ELEMS - totalOnes;
+
+        // Every thread finished reading gs_key/gs_id before the scan barriers, so the partition
+        // write-back is hazard-free.
+        [unroll]
+        for (e = 0u; e < ELEMS; e++)
+        {
+            uint local = t * ELEMS + e;
+            uint destination = flags[e] != 0u ? numZeros + onesBefore : local - onesBefore;
+            onesBefore += flags[e];
+            gs_key[destination] = keys[e];
+            gs_id[destination] = ids[e];
+        }
+        GroupMemoryBarrierWithGroupSync();
+    }
+
+    // Mark where each digit's run starts in the locally sorted array.
+    [unroll]
+    for (e = 0u; e < ELEMS; e++)
+    {
+        uint local = t * ELEMS + e;
+        uint digit = (gs_key[local] >> shiftBits) & (RADIX - 1u);
+        if (local == 0u || ((gs_key[local - 1u] >> shiftBits) & (RADIX - 1u)) != digit)
+        {
+            gs_digitStart[digit] = local;
+        }
+    }
+    GroupMemoryBarrierWithGroupSync();
+
+    // Scatter: global offset of the digit for this group, plus the rank inside the local run.
+    // Local order is original-index order (stable splits), so the whole sort stays stable.
+    [unroll]
+    for (e = 0u; e < ELEMS; e++)
+    {
+        uint local = t * ELEMS + e;
+        uint id = gs_id[local];
+        if (id != SENTINEL)
+        {
+            uint key = gs_key[local];
+            uint digit = (key >> shiftBits) & (RADIX - 1u);
+            uint destination = gs_globalBase[digit] + (local - gs_digitStart[digit]);
+            _KeysDst[destination] = uint2(key, id);
+        }
+    }
+}
