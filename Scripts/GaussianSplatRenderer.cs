@@ -90,6 +90,10 @@ public partial class GaussianSplatRenderer : MonoBehaviour
     [Tooltip("Editor-only preview that draws, per LOD chunk, a cube centered on the splat center-of-mass with surface area equal to the stored covariance area.")]
     [SerializeField] bool debugDrawChunkCenterArea;
 
+    [Tooltip("Auto-generate the in-world control UI (sliders, splat selection) when the scene has splats. Turn this off for a display-only splat with no runtime controls; it removes the UI's per-frame cost entirely. 'Gaussian Splatting / Generate In-World UI' still creates it on demand.")]
+    [SerializeField] bool generateControlUi = true;
+    public bool GenerateControlUi { get { return generateControlUi; } }
+
     [Header("Render Settings")]
     [Tooltip("Quantization of camera position to avoid unnecessary updates and jitter. Set to 0 to disable. Default is 10 cm.")]
     [SerializeField] float cameraPositionQuantization = 0.1f;

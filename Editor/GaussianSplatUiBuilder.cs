@@ -43,6 +43,56 @@ namespace GaussianSplatting.Editor
             EditorApplication.update += ProcessAutoRefresh;
         }
 
+        // The auto-refresh above only builds the UI for scenes that do not have one yet. Rebuilding
+        // an existing one needs an explicit entry point -- there was none before.
+        [MenuItem("Gaussian Splatting/Generate In-World UI")]
+        static void GenerateForActiveScene()
+        {
+            GaussianSplatRenderer renderer = GaussianSplatRenderer.FindExistingSceneRenderer(
+                UnityEditor.SceneManagement.EditorSceneManager.GetActiveScene());
+            if (renderer == null)
+            {
+                Debug.LogWarning("Gaussian Splatting: no GaussianSplatRenderer in the active scene.");
+                return;
+            }
+            Generate(renderer);
+        }
+
+        // Deletes the generated UI and turns off auto-generation so it stays gone. Use this for a
+        // display-only splat that needs no runtime controls -- it removes the panel's per-frame cost.
+        [MenuItem("Gaussian Splatting/Remove In-World UI")]
+        static void RemoveForActiveScene()
+        {
+            var scene = UnityEditor.SceneManagement.EditorSceneManager.GetActiveScene();
+            GaussianSplatRenderer renderer = GaussianSplatRenderer.FindExistingSceneRenderer(scene);
+            int removed = RemoveFromRenderer(renderer);
+            UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(scene);
+            UnityEditor.SceneManagement.EditorSceneManager.SaveScene(scene);
+            Debug.Log("Gaussian Splatting: removed " + removed + " in-world UI object(s) from '" + scene.name + "' and disabled auto-generation.");
+        }
+
+        internal static int RemoveFromRenderer(GaussianSplatRenderer renderer)
+        {
+            if (renderer == null)
+            {
+                return 0;
+            }
+            SerializedObject so = new SerializedObject(renderer);
+            SerializedProperty flag = so.FindProperty("generateControlUi");
+            if (flag != null && flag.boolValue)
+            {
+                flag.boolValue = false;
+                so.ApplyModifiedProperties();
+            }
+            Transform ui = renderer.transform.Find("Gaussian Splat UI");
+            if (ui == null)
+            {
+                return 0;
+            }
+            Undo.DestroyObjectImmediate(ui.gameObject);
+            return 1;
+        }
+
         static void QueueAutoRefresh() { _autoRefreshQueued = true; }
 
         static void ProcessAutoRefresh()
@@ -53,7 +103,7 @@ namespace GaussianSplatting.Editor
             for (int i = 0; i < renderers.Length; i++)
             {
                 GaussianSplatRenderer renderer = renderers[i];
-                if (renderer == null || renderer != GaussianSplatRenderer.FindExistingSceneRenderer(renderer.gameObject.scene) || EditorUtility.IsPersistent(renderer) || UnityEditor.SceneManagement.EditorSceneManager.IsPreviewScene(renderer.gameObject.scene) || renderer.transform.Find("Gaussian Splat UI") != null) continue;
+                if (renderer == null || !renderer.GenerateControlUi || renderer != GaussianSplatRenderer.FindExistingSceneRenderer(renderer.gameObject.scene) || EditorUtility.IsPersistent(renderer) || UnityEditor.SceneManagement.EditorSceneManager.IsPreviewScene(renderer.gameObject.scene) || renderer.transform.Find("Gaussian Splat UI") != null) continue;
                 if (SceneHasSplatContent(renderer.gameObject.scene))
                 {
                     Generate(renderer, false);
