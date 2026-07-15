@@ -366,7 +366,16 @@ void geo(point v2g input[1], inout TriangleStream<g2f> triStream, uint instanceI
 #if !defined(GS_COLLIDER_DEPTH_WEIGHT)
     float3 cameraPosObject = mul(unity_WorldToObject, float4(_WorldSpaceCameraPos, 1.0)).xyz;
     o.color.rgb = EvaluateSplatSHColor(splat.id, splat.color.rgb, splat.mean, cameraPosObject);
-    o.color.rgb = shift_color(o.color.rgb) * _Exposure;
+    // shift_color runs a full RGB->Oklab->Oklch->Oklab->RGB round trip (pow/atan2/sin/cos plus
+    // several mat-vec products) and no-geom pays it once per quad corner -- 4x per splat. With no
+    // colour shift configured (_OKLCHShift == 0 and _Gamma == 1) the round trip is an identity on
+    // the already-saturated SH colour, so skip it. The guard is on uniforms, so every invocation in
+    // the draw takes the same branch -- coherent, no divergence, and the output is unchanged.
+    if (any(_OKLCHShift != 0.0) || _Gamma != 1.0)
+    {
+        o.color.rgb = shift_color(o.color.rgb);
+    }
+    o.color.rgb *= _Exposure;
     #ifdef _FAKE_SRGB
         o.color.rgb = GammaToLinearSpace(o.color.rgb);
     #endif
