@@ -71,14 +71,16 @@ bool valid_ellipse(Ellipse ellipse)
         && ellipse.size.y < SAFE_ELLIPSE_SIZE_LIMIT;
 }
 
-Ellipse GetProjectedEllipsoid(float3 pos, float3 scale, float4 rotation)
+// centerClip is the splat centre in clip space (pre-divide), i.e. UnityObjectToClipPos(pos).
+// The caller already needs that transform for its own frustum test, so it is passed in rather
+// than recomputed here -- the vertex shader runs this once per quad corner on the no-geom path.
+Ellipse GetProjectedEllipsoid(float3 scale, float4 rotation, float4 centerClip)
 {
     Ellipse ellipse;
     ellipse.center = 0.0;
     ellipse.axis = float2(1.0, 0.0);
     ellipse.size = 0.0;
 
-    float4 centerClip = UnityObjectToClipPos(float4(pos, 1.0));
     if (centerClip.w <= DIV_EPSILON) return ellipse;
 
     float2 centerNdc = centerClip.xy / centerClip.w;

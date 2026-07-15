@@ -44,6 +44,7 @@ float _GS_ColliderOpacityLogMultiplier;
 
 #define GS_RAY_DEPTH_ABS_LIMIT 1e6
 #define GS_RAY_DEPTH_SQ_LIMIT 1e12
+#define GS_LOG2_E 1.4426950408889634
 
 struct appdata {
     float4 position : POSITION;
@@ -289,21 +290,34 @@ void geo(point v2g input[1], inout TriangleStream<g2f> triStream, uint instanceI
     #endif
 
 #if defined(GS_COLLIDER_SOURCE_LOAD)
+    // Editor collider bake: the loader resolves rank -> source texel itself, so it loads whole.
     SplatData splat = LoadSplatDataColliderSource(id);
-    #elif defined(DEBUG_RAW_SPLAT_ORDER)
-    SplatData splat = LoadSplatData(id);
-    splat.id = id;
-    splat.valid = true;
-    #elif defined(_PRECOMPUTED_SORTING_ON)
-    float3 cam_dir = mul(transpose(UNITY_MATRIX_IT_MV), float4(0, 0, 1, 0)).xyz; // camera direction in object space
-    SplatData splat = LoadSplatDataPrecomputedOrder(id, cam_dir);
-    #else
-    SplatData splat = LoadSplatDataRenderOrder(id);
-    #endif
-
     if (!splat.valid || (splat.color.a < _AlphaCutoff) || (splat.color.a < _AlphaCull) || any(splat.scale > _ScaleCutoff)) {
         GS_RETURN_INVALID;
     }
+#else
+    #ifdef DEBUG_RAW_SPLAT_ORDER
+    uint splatId = id;
+    #elif defined(_PRECOMPUTED_SORTING_ON)
+    float3 cam_dir = mul(transpose(UNITY_MATRIX_IT_MV), float4(0, 0, 1, 0)).xyz; // camera direction in object space
+    uint splatId = (uint)max(GetPrecomputedRenderOrderIndex(id, cam_dir), 0);
+    #else
+    uint splatId = ResolveRenderOrderId(id);
+    #endif
+
+    // Fetch the colour on its own first: splats culled on alpha (the common cull on Quest, where
+    // the presets set _AlphaCull as high as 0.07-0.15) never pay the position/scale/rotation fetches.
+    float4 splatColor = LoadSplatColorData(splatId);
+    if ((splatColor.a < _AlphaCutoff) || (splatColor.a < _AlphaCull)) {
+        GS_RETURN_INVALID;
+    }
+
+    SplatData splat = LoadSplatGeometry(splatId);
+    splat.color = splatColor;
+    if (any(splat.scale > _ScaleCutoff)) {
+        GS_RETURN_INVALID;
+    }
+#endif
 
     float3 splatWorldPos = mul(unity_ObjectToWorld, float4(splat.mean, 1)).xyz;
 
@@ -319,8 +333,8 @@ void geo(point v2g input[1], inout TriangleStream<g2f> triStream, uint instanceI
 #endif
 
     float3 camToSplat = splatWorldPos - _WorldSpaceCameraPos;
-    float lodMaxScale = max(splat.scale.x, max(splat.scale.y, splat.scale.z));
-    if (lodMaxScale * lodMaxScale < (_LODCull * _LODCull) * dot(camToSplat, camToSplat)) {
+    float maxScale = max(splat.scale.x, max(splat.scale.y, splat.scale.z));
+    if (maxScale * maxScale < (_LODCull * _LODCull) * dot(camToSplat, camToSplat)) {
         GS_RETURN_INVALID;
     }
 
@@ -328,8 +342,8 @@ void geo(point v2g input[1], inout TriangleStream<g2f> triStream, uint instanceI
     if (splatClipPos.w <= 0) {
         GS_RETURN_INVALID;
     }
-    splatClipPos.xyz /= splatClipPos.w; // perspective divide
-    if (all(splatClipPos.xy < -1.0) || all(splatClipPos.xy > 1.0)) {
+    float3 splatNdc = splatClipPos.xyz / splatClipPos.w; // perspective divide
+    if (all(splatNdc.xy < -1.0) || all(splatNdc.xy > 1.0)) {
         GS_RETURN_INVALID;
     }
 
@@ -344,20 +358,17 @@ void geo(point v2g input[1], inout TriangleStream<g2f> triStream, uint instanceI
     o.colliderDepthNorm = colliderDepthNorm;
 #endif
     float peakAlpha = o.color.a;
-    float cutoffSigmaRadius = sqrt(max(-2.0 * log(_AlphaCutoff / peakAlpha), 0.0));
-    float scale_max = max(splat.scale.x, max(splat.scale.y, splat.scale.z));
-    float3 clamped_scale = clamp(splat.scale, scale_max * _ThinThreshold, scale_max);
-    float3 projection_scale = max(clamped_scale, scale_max / PROJECTION_MAX_ANISOTROPY);
+    // cutoffSigmaRadiusSq doubles as the Gaussian falloff exponent below, so keep it un-rooted.
+    float cutoffSigmaRadiusSq = max(-2.0 * log(_AlphaCutoff / peakAlpha), 0.0);
+    float cutoffSigmaRadius = sqrt(cutoffSigmaRadiusSq);
+    float3 clamped_scale = clamp(splat.scale, maxScale * _ThinThreshold, maxScale);
+    float3 projection_scale = max(clamped_scale, maxScale / PROJECTION_MAX_ANISOTROPY);
     float supportScale = _GaussianMul * cutoffSigmaRadius;
     float3 splatSupport = supportScale * projection_scale;
     o.splatSupport = splatSupport;
 
-    if (o.color.a < _AlphaCutoff) {
-        GS_RETURN_INVALID;
-    }
-
     // Project the ellipsoid onto the screen
-    Ellipse ell = GetProjectedEllipsoid(splat.mean, splatSupport, splat.quat);
+    Ellipse ell = GetProjectedEllipsoid(splatSupport, splat.quat, splatClipPos);
 
     if(!valid_ellipse(ell) || any(ell.size > 1.75)) {
         GS_RETURN_INVALID;
@@ -402,7 +413,8 @@ void geo(point v2g input[1], inout TriangleStream<g2f> triStream, uint instanceI
     float areaPost = ell.size.x * ell.size.y;
     float areaScale = area / areaPost;
     o.color.a *= areaScale; // scale alpha by area ratio
-    o.gaussianExp = 0.5 * cutoffSigmaRadius * cutoffSigmaRadius;
+    // Pre-multiplied by log2(e) so the fragment shader can use the GPU-native exp2 directly.
+    o.gaussianExp = (0.5 * GS_LOG2_E) * cutoffSigmaRadiusSq;
 
 #ifdef GS_NO_GEOM
     uint vtxID = v.vertexID & 3u;
@@ -417,7 +429,7 @@ void geo(point v2g input[1], inout TriangleStream<g2f> triStream, uint instanceI
 #if defined(GS_COLLIDER_DEPTH_WEIGHT)
         o.position = float4(ndc, 0.5, 1.0);
 #else
-        float cornerDepth = splatClipPos.z;
+        float cornerDepth = splatNdc.z;
         float rayDepth;
         if (GSTryGetRaySplatDepth(splat.mean, splatSupport, splat.quat, ndc, rayDepth))
         {
@@ -473,7 +485,8 @@ float4 frag(g2f input) : SV_Target {
     {
         discard;
     }
-    float rho = input.color.a * exp(-input.gaussianExp * dist2);
+    // gaussianExp already carries the log2(e) factor, so this equals exp(-exponent * dist2).
+    float rho = input.color.a * exp2(-input.gaussianExp * dist2);
 #ifdef GS_COLLIDER_DEPTH_WEIGHT
     if (rho > 0.0)
     {

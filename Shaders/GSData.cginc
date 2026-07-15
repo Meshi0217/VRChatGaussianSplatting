@@ -162,7 +162,16 @@ float3 DecodePackedSplatPosition(uint id, uint2 coord)
     return lerp(boundsMin, boundsMax, float3(qx, qy, qz) * (1.0 / 1023.0));
 }
 
-SplatData LoadSplatData(uint id) {
+// Colour and geometry load separately so the splat vertex shader can alpha-cull on the colour
+// fetch alone before paying for the position/scale/rotation fetches.
+float4 LoadSplatColorData(uint id) {
+    uint2 coord = GetSplatCoord(id);
+    float4 color = LoadSplatColor(coord);
+    color.a *= _Opacity;
+    return color;
+}
+
+SplatData LoadSplatGeometry(uint id) {
     uint2 coord = GetSplatCoord(id);
 
     SplatData o;
@@ -175,8 +184,15 @@ SplatData LoadSplatData(uint id) {
     // Only necessary if splats are trained without mip-splatting.
     o.scale = max(exp2(_Log2MinScale), _GS_Scales[coord].xyz);
     o.quat = normalize(lerp(-1.0, 1.0, _GS_Rotations[coord]));
-    o.color = LoadSplatColor(coord);
-    o.color.a *= _Opacity;
+    o.color = 0.0;
+    o.id = id;
+    o.valid = true;
+    return o;
+}
+
+SplatData LoadSplatData(uint id) {
+    SplatData o = LoadSplatGeometry(id);
+    o.color = LoadSplatColorData(id);
     return o;
 }
 
@@ -280,29 +296,25 @@ int GetPrecomputedRenderOrderIndex(uint id, float3 cam_dir) {
     return _GS_RenderOrderPrecomputed[int3(coord, best_index)];
 }
 
-SplatData LoadSplatDataRenderOrder(uint id) {
+uint ResolveRenderOrderId(uint id) {
     uint actualSplatCount = (uint)max(_ActualSplatCount, 1);
     uint renderOrderCapacity = uint(_GS_RenderOrder_TexelSize.z) * uint(_GS_RenderOrder_TexelSize.w);
     bool validOrder = renderOrderCapacity >= actualSplatCount;
     uint reordered_id = id;
-    bool valid = true;
     if(validOrder) { // if valid order texture
         uint2 coord1 = IndexToUV(id);
         reordered_id = (uint)round(max(_GS_RenderOrder[coord1], 0.0));
     } else {
         reordered_id = pcg(reordered_id) % actualSplatCount; // randomize order for alpha blending to somewhat work
     }
-    SplatData data = LoadSplatData(reordered_id);
-    data.id = reordered_id; // store the original ID for debugging purposes
-    data.valid = valid;
-    return data;
+    return reordered_id;
 }
 
-SplatData LoadSplatDataPrecomputedOrder(uint id, float3 cam_dir) {
-    uint precomputedIndex = (uint)max(GetPrecomputedRenderOrderIndex(id, cam_dir), 0);
-    SplatData data = LoadSplatData(precomputedIndex);
-    data.id = precomputedIndex; // store the original ID for debugging purposes
-    data.valid = true; // precomputed order is always valid
+SplatData LoadSplatDataRenderOrder(uint id) {
+    uint reordered_id = ResolveRenderOrderId(id);
+    SplatData data = LoadSplatData(reordered_id);
+    data.id = reordered_id; // store the original ID for debugging purposes
+    data.valid = true;
     return data;
 }
 
