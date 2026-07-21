@@ -1,4 +1,8 @@
-﻿#define UNITY_SHADER_NO_UPGRADE 1
+﻿// Pull this file in with #include_with_pragmas, not #include: Unity ignores Unity-specific #pragma
+// directives in files brought in with a plain #include. Unity 2022.3 honoured them anyway, so the
+// shaders worked under VRChat; Unity 6 does not, and the snippet is dropped for having no entry
+// points, leaving the shader unsupported and its materials propertyless.
+#define UNITY_SHADER_NO_UPGRADE 1
 #ifdef GS_NO_GEOM
 #pragma target 3.5
 #else
@@ -7,7 +11,7 @@
 #endif
 #pragma shader_feature_local _PRECOMPUTED_SORTING_ON
 #pragma shader_feature_local _GS_PACKED_POSITIONS
-#pragma multi_compile_local __ _VRC_LIGHT_VOLUMES_ON
+#pragma multi_compile_instancing
 #pragma vertex vert
 #pragma fragment frag
 #ifndef GS_NO_GEOM
@@ -20,11 +24,6 @@
 #include "UnityCG.cginc"
 #include "GSData.cginc"
 #include "GSMath.cginc"
-
-#ifdef _VRC_LIGHT_VOLUMES_ON
-#include "LightVolumes.cginc"
-float _LightVolumeIntensity;
-#endif
 
 #ifdef GS_COLLIDER_DEPTH_WEIGHT
 float4x4 _GS_ColliderWorldToBox;
@@ -364,16 +363,6 @@ void geo(point v2g input[1], inout TriangleStream<g2f> triStream, uint instanceI
         o.color.rgb = GammaToLinearSpace(o.color.rgb);
     #endif
 
-#ifdef _VRC_LIGHT_VOLUMES_ON
-    if (LightVolumesEnabled())
-    {
-        float3 L0, L1r, L1g, L1b;
-        LightVolumeSH(splatWorldPos, L0, L1r, L1g, L1b);
-        float3 emissivePart = max(o.color.rgb - 1.0, 0.0);
-        float3 albedoPart = min(o.color.rgb, 1.0);
-        o.color.rgb = albedoPart * LinearToGammaSpace(abs(L0)) * _LightVolumeIntensity + emissivePart;
-    }
-#endif
 #endif
 
     float area = ell.size.x * ell.size.y;

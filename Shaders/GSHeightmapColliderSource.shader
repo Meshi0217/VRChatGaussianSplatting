@@ -9,14 +9,12 @@ Shader "Hidden/GaussianSplatting/HeightmapColliderDepthSource"
         [HideInInspector] _GS_Scales ("Scales", 2D) = "" {}
         [HideInInspector] _GS_Rotations ("Quats", 2D) = "" {}
         [HideInInspector] _GS_Colors ("Colors", 2D) = "" {}
-        [HideInInspector] _GS_ColorsCamera ("Colors Camera", 2D) = "" {}
         [HideInInspector] _GS_SH ("SH", 2D) = "" {}
         [HideInInspector] _GS_ChunkBounds ("Chunk Bounds", 2D) = "" {}
         [HideInInspector] _GS_ChunkSize ("Chunk Size", Int) = 0
         [HideInInspector] _SplatCount ("Splat Count", Int) = 0
         [HideInInspector] _ActualSplatCount ("Actual Splat Count", Int) = 0
         [HideInInspector] _SplatOffset ("Splat Offset", Int) = 0
-        [HideInInspector] _GS_CameraColorArray ("Colors From Camera Array", Float) = 0
         [HideInInspector] _GS_Positions_CoordMask ("Positions Coord Mask", Int) = 0
         [HideInInspector] _GS_Positions_CoordShift ("Positions Coord Shift", Int) = 0
         [HideInInspector] _GS_SH_CoeffCount ("SH Coeff Count", Int) = 0
