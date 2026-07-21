@@ -1,8 +1,11 @@
-Shader "VRChatGaussianSplatting/GaussianSplattingSimpleBackToFront"
+﻿Shader "VRChatGaussianSplatting/GaussianSplattingSimpleBackToFront"
 {
     Properties
     {
         [HideInInspector] _GS_Positions ("Means", 2D) = "" {}
+        [HideInInspector] [Toggle(_GS_PACKED_POSITIONS)] _GS_PackedPositions ("Packed Positions", Integer) = 0
+        [HideInInspector] _GS_ChunkBounds ("Chunk Bounds (row0 min, row1 max)", 2D) = "" {}
+        [HideInInspector] _GS_ChunkSize ("Chunk Size", Int) = 0
         [HideInInspector] _GS_Scales ("Scales", 2D) = "" {}
         [HideInInspector] _GS_Rotations ("Quats", 2D) = "" {}
         [HideInInspector] _GS_Colors ("Colors", 2D) = "" {}
@@ -55,6 +58,7 @@ Shader "VRChatGaussianSplatting/GaussianSplattingSimpleBackToFront"
             #include_with_pragmas "GS.cginc"
             ENDCG
         }
+
     }
     CustomEditor "GaussianSplatting.Editor.GaussianSplatShaderGUI"
 }
