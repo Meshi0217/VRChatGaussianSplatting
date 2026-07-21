@@ -649,8 +649,8 @@ public partial class GaussianSplatRenderer
         sceneCombiner.SetEditorDebugLodColors(false);
 
         Vector4 fullDetailLodParams = new Vector4(-GaussianSplatObject.MAX_LOD_ALPHA_LOG2, 0.0f, 0.0f, 0.0f);
-        if (!UpdateCombinedTexturesForSort(sceneCombiner, cameraPosition, cameraPosition, cameraForward, cameraPosition,
-            false, 0, fullDetailLodParams, false, true, true))
+        if (!UpdateCombinedTexturesForSort(sceneCombiner, cameraPosition, cameraPosition, cameraForward,
+            0, fullDetailLodParams, false, true, true))
         {
             return false;
         }

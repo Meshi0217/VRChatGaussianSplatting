@@ -9,6 +9,7 @@ using UnityEditor.Events;
 using UnityEngine;
 using UnityEngine.Events;
 using UnityEngine.EventSystems;
+using UnityEngine.InputSystem.UI;
 using UnityEngine.UI;
 
 namespace GaussianSplatting.Editor
@@ -148,6 +149,7 @@ namespace GaussianSplatting.Editor
             }
 
             EnsureEventSystemExists();
+            EnsurePhysicsRaycasterExists();
 
             // The gallery list, master lock, and custom description are author-set data that live only on the UI
             // component. Regenerating destroys that component, so carry those values across to the rebuilt UI.
@@ -598,20 +600,36 @@ namespace GaussianSplatting.Editor
             EditorUtility.SetDirty(targetBehaviour);
         }
 
+        // The Standard shader has no pass URP knows how to draw, so a material built on it renders
+        // magenta. These are flat backing panels, so unlit is what is wanted anyway. Existing assets
+        // are repaired rather than reused as-is, since Standard-based ones were already written to disk.
         static Material CreateOpaqueBackgroundMaterial(string assetName, Color color)
         {
             const string materialFolderPath = "Assets/VRChatGaussianSplatting/Resources/Materials";
             string materialAssetPath = materialFolderPath + "/" + assetName + ".mat";
             EnsureFolderExists(materialFolderPath);
-            Material material = AssetDatabase.LoadAssetAtPath<Material>(materialAssetPath);
-            if (material != null) return material;
-            Shader shader = Shader.Find("Standard") ?? Shader.Find("Unlit/Color");
+            Shader shader = Shader.Find("Universal Render Pipeline/Unlit") ?? Shader.Find("Unlit/Color");
             if (shader == null) return null;
-            material = new Material(shader);
-            material.name = assetName;
-            material.color = color;
-            AssetDatabase.CreateAsset(material, materialAssetPath);
+            Material material = AssetDatabase.LoadAssetAtPath<Material>(materialAssetPath);
+            if (material == null)
+            {
+                material = new Material(shader);
+                material.name = assetName;
+                AssetDatabase.CreateAsset(material, materialAssetPath);
+            }
+            else if (material.shader != shader)
+            {
+                material.shader = shader;
+                EditorUtility.SetDirty(material);
+            }
+            SetMaterialColor(material, color);
             return material;
+        }
+
+        static void SetMaterialColor(Material material, Color color)
+        {
+            if (material.HasProperty("_BaseColor")) material.SetColor("_BaseColor", color);
+            if (material.HasProperty("_Color")) material.SetColor("_Color", color);
         }
 
         static GameObject CreateOpaqueBackgroundPlate(Transform parent, Vector2 sizeDelta, Material material = null)
@@ -928,16 +946,44 @@ namespace GaussianSplatting.Editor
             return slider;
         }
 
+        // StandaloneInputModule reads UnityEngine.Input, which throws outright when the project is
+        // set to the Input System package (this one is). Every EventSystem we touch therefore has
+        // to carry InputSystemUIInputModule instead, including ones left behind by older scenes.
         static void EnsureEventSystemExists()
         {
             EventSystem[] eventSystems = Resources.FindObjectsOfTypeAll<EventSystem>();
             for (int i = 0; i < eventSystems.Length; i++)
             {
                 GameObject existingEventSystemObject = eventSystems[i] != null ? eventSystems[i].gameObject : null;
-                if (existingEventSystemObject != null && !EditorUtility.IsPersistent(existingEventSystemObject)) return;
+                if (existingEventSystemObject == null || EditorUtility.IsPersistent(existingEventSystemObject)) continue;
+                UseInputSystemUiModule(existingEventSystemObject);
+                return;
             }
-            GameObject eventSystemObject = new GameObject("EventSystem", typeof(EventSystem), typeof(StandaloneInputModule));
+            GameObject eventSystemObject = new GameObject("EventSystem", typeof(EventSystem));
             Undo.RegisterCreatedObjectUndo(eventSystemObject, "Create EventSystem");
+            UseInputSystemUiModule(eventSystemObject);
+        }
+
+        static void UseInputSystemUiModule(GameObject eventSystemObject)
+        {
+            StandaloneInputModule legacyModule = eventSystemObject.GetComponent<StandaloneInputModule>();
+            if (legacyModule != null)
+            {
+                Undo.DestroyObjectImmediate(legacyModule);
+            }
+            if (eventSystemObject.GetComponent<InputSystemUIInputModule>() == null)
+            {
+                Undo.AddComponent<InputSystemUIInputModule>(eventSystemObject);
+            }
+        }
+
+        // Screen clicks only reach 3D colliders (QualityToggle, TurnOnToggle) through a
+        // PhysicsRaycaster on the camera that draws them.
+        static void EnsurePhysicsRaycasterExists()
+        {
+            Camera camera = Camera.main;
+            if (camera == null || camera.GetComponent<PhysicsRaycaster>() != null) return;
+            Undo.AddComponent<PhysicsRaycaster>(camera.gameObject);
         }
     }
 }
