@@ -16,7 +16,12 @@ namespace GaussianSplatting.Tests
         public void QueueingAndClearingFusedBake_DoesNotDirtyScene()
         {
             const string scenePath = "Assets/__GSFusedBakeQueueDirtyTest__.unity";
-            Scene scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Additive);
+            // Batchmode starts on an untitled unsaved scene, and NewScene(Additive) refuses to run
+            // next to one. Replace it (Single) in that case; otherwise stay additive so an open
+            // saved scene in an interactive editor is left alone.
+            bool replaceUntitled = string.IsNullOrEmpty(SceneManager.GetActiveScene().path);
+            Scene scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene,
+                replaceUntitled ? NewSceneMode.Single : NewSceneMode.Additive);
             GaussianSplatCombiner combiner = null;
             MethodInfo clear = typeof(GaussianSplatCombiner).GetMethod("ClearQueuedFusedLODBake", BindingFlags.Instance | BindingFlags.NonPublic);
             try
@@ -44,7 +49,15 @@ namespace GaussianSplatting.Tests
             finally
             {
                 if (combiner != null && clear != null) clear.Invoke(combiner, null); // leave no entry in the static queue
-                EditorSceneManager.CloseScene(scene, true);
+                if (replaceUntitled)
+                {
+                    // The temp scene is the only open scene and cannot be closed; replace it instead.
+                    EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
+                }
+                else
+                {
+                    EditorSceneManager.CloseScene(scene, true);
+                }
                 AssetDatabase.DeleteAsset(scenePath);
             }
         }

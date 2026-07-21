@@ -60,7 +60,7 @@ Shader "Hidden/VRChatGaussianSplatting/DebugEllipsoid"
             CGPROGRAM
             #define GS_USE_ELLIPSOID_HIT_DEPTH
             #define GS_DEBUG_ELLIPSOID_PASS
-            #include "../GS.cginc"
+            #include_with_pragmas "../GS.cginc"
             ENDCG
         }
     }

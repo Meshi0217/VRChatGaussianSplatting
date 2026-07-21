@@ -46,7 +46,7 @@ Shader "Hidden/GaussianSplatting/HeightmapColliderDepthSource"
             CGPROGRAM
             #define GS_COLLIDER_DEPTH_WEIGHT
             #define GS_COLLIDER_SOURCE_LOAD
-            #include "GS.cginc"
+            #include_with_pragmas "GS.cginc"
             ENDCG
         }
     }
