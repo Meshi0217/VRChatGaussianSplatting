@@ -3,7 +3,6 @@
     "rootNamespace": "GaussianSplatting.Tests",
     "references": [
         "GaussianSplatting",
-        "UdonSharp.Runtime",
         "UnityEngine.TestRunner",
         "UnityEditor.TestRunner"
     ],

@@ -1,15 +1,11 @@
-using UdonSharp;
 using UnityEngine;
-using VRC.SDKBase;
-using VRC.Udon;
 
-#if UNITY_EDITOR && !COMPILER_UDONSHARP
+#if UNITY_EDITOR
 using UnityEditor;
 using UnityEngine.Rendering;
 #endif
 
-[UdonBehaviourSyncMode(BehaviourSyncMode.None)]
-public class RadixSort : UdonSharpBehaviour
+public class RadixSort : MonoBehaviour
 {
     [SerializeField] public Material computeKeyValues;
     [SerializeField] public Material radixSort;
@@ -82,7 +78,7 @@ public class RadixSort : UdonSharpBehaviour
         return texture != null;
     }
 
-#if UNITY_EDITOR && !COMPILER_UDONSHARP
+#if UNITY_EDITOR
     static Material _editorCopySortedOrderMaterial;
 #endif
 
@@ -97,7 +93,7 @@ public class RadixSort : UdonSharpBehaviour
         CopySortedOrderInternal(renderOrder, slice, false);
     }
 
-#if UNITY_EDITOR && !COMPILER_UDONSHARP
+#if UNITY_EDITOR
     // Editor previews: full sort + copy every frame for the given camera slice.
     public void RunFullSortForEditor(RenderTexture renderOrder, int slice)
     {
@@ -121,7 +117,7 @@ public class RadixSort : UdonSharpBehaviour
         setStaticUniforms();
 
         // 1. Evaluate key values
-#if UNITY_EDITOR && !COMPILER_UDONSHARP
+#if UNITY_EDITOR
         if (useEditorOps)
         {
             Graphics.Blit(null, keyValues0, computeKeyValues);
@@ -129,7 +125,7 @@ public class RadixSort : UdonSharpBehaviour
         else
 #endif
         {
-            VRCGraphics.Blit(null, keyValues0, computeKeyValues);
+            Graphics.Blit(null, keyValues0, computeKeyValues);
         }
 
         radixSort.SetTexture("_PrefixSums", prefixSums);
@@ -145,7 +141,7 @@ public class RadixSort : UdonSharpBehaviour
             radixSort.SetTexture("_KeyValues", keyValues0);
             radixSort.SetInt("_CurrentBit", currentBit);
 
-#if UNITY_EDITOR && !COMPILER_UDONSHARP
+#if UNITY_EDITOR
             if (useEditorOps)
             {
                 Graphics.Blit(null, histograms, radixSort, 0);
@@ -155,14 +151,14 @@ public class RadixSort : UdonSharpBehaviour
             else
 #endif
             {
-                VRCGraphics.Blit(null, histograms, radixSort, 0);
+                Graphics.Blit(null, histograms, radixSort, 0);
                 radixSort.SetTexture("_Histograms", histograms);
-                VRCGraphics.Blit(null, prefixSums, radixSort, 1);
+                Graphics.Blit(null, prefixSums, radixSort, 1);
             }
 
             prefixSums.GenerateMips();
 
-#if UNITY_EDITOR && !COMPILER_UDONSHARP
+#if UNITY_EDITOR
             if (useEditorOps)
             {
                 Graphics.Blit(null, keyValues1, radixSort, 2);
@@ -170,7 +166,7 @@ public class RadixSort : UdonSharpBehaviour
             else
 #endif
             {
-                VRCGraphics.Blit(null, keyValues1, radixSort, 2);
+                Graphics.Blit(null, keyValues1, radixSort, 2);
             }
 
             // Ping-pong the buffers
@@ -182,7 +178,7 @@ public class RadixSort : UdonSharpBehaviour
         }
     }
 
-#if UNITY_EDITOR && !COMPILER_UDONSHARP
+#if UNITY_EDITOR
     static Material GetEditorCopySortedOrderMaterial()
     {
         if (_editorCopySortedOrderMaterial != null)
@@ -232,7 +228,7 @@ public class RadixSort : UdonSharpBehaviour
             return;
         }
 
-#if UNITY_EDITOR && !COMPILER_UDONSHARP
+#if UNITY_EDITOR
         if (useEditorOps)
         {
             Material copyMaterial = GetEditorCopySortedOrderMaterial();
@@ -250,7 +246,7 @@ public class RadixSort : UdonSharpBehaviour
 #endif
 
         copySortedOrder.SetTexture("_KeyValues", keyValues0);
-        VRCGraphics.Blit(null, target, copySortedOrder, 0);
+        Graphics.Blit(null, target, copySortedOrder, 0);
     }
 
     private void setStaticUniforms()

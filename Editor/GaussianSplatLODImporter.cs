@@ -1,4 +1,4 @@
-#if UNITY_EDITOR && !COMPILER_UDONSHARP
+#if UNITY_EDITOR
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -7,7 +7,6 @@ using GaussianSplatting.Editor.Utils;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.Rendering;
-using UdonSharpEditor;
 using static GaussianSplatting.StreamedSplatReader;
 
 namespace GaussianSplatting
@@ -815,7 +814,7 @@ namespace GaussianSplatting
                 GaussianSplatObject lod = root.GetComponent<GaussianSplatObject>();
                 if (lod == null)
                 {
-                    lod = root.AddUdonSharpComponent<GaussianSplatObject>();
+                    lod = root.AddComponent<GaussianSplatObject>();
                 }
                 lod.splatName = assetName;
                 lod.description = "Chunk LOD imported from " + sourcePath;

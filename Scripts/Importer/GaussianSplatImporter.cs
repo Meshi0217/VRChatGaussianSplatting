@@ -1,5 +1,5 @@
 
-#if UNITY_EDITOR && !COMPILER_UDONSHARP
+#if UNITY_EDITOR
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -16,8 +16,6 @@ using UnityEngine.Rendering;
 using UnityEngine.SceneManagement;
 using GaussianSplatting.Editor.Utils;
 using GaussianSplatting;
-using UdonSharp;
-using UdonSharpEditor;
 
 namespace GaussianSplatting
 {

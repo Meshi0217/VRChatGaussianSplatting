@@ -4,8 +4,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
 using TMPro;
-using UdonSharp;
-using UdonSharpEditor;
 using UnityEditor;
 using UnityEditor.Events;
 using UnityEngine;
@@ -31,8 +29,6 @@ namespace GaussianSplatting.Editor
         const int UiTextMeshProAtlasSize = 2048;
         const UnityEngine.TextCore.LowLevel.GlyphRenderMode UiTextMeshProGlyphRenderMode = UnityEngine.TextCore.LowLevel.GlyphRenderMode.SDFAA_HINTED;
         const float UiTextMeshProBoldStyle = 1.5f;
-
-        static Type _cachedVrChatUiShapeType;
         static Material _cachedSupersampledUiMaterial;
         static TMP_FontAsset _cachedUiTextMeshProFont;
         static bool _autoRefreshQueued = true;
@@ -196,8 +192,6 @@ namespace GaussianSplatting.Editor
             RectTransform canvasRect = canvasObject.GetComponent<RectTransform>();
             canvasRect.sizeDelta = new Vector2(1120.0f, 980.0f);
 
-            TryAddVrChatUiShape(canvasObject);
-
             CreateOpaqueBackgroundPlate(canvasObject.transform, canvasRect.sizeDelta);
 
             GameObject panelObject = CreateVerticalGroup("Panel", canvasObject.transform, new RectOffset(12, 12, 10, 10), 10.0f, TextAnchor.UpperLeft);
@@ -207,7 +201,7 @@ namespace GaussianSplatting.Editor
             panelRect.pivot = new Vector2(0.5f, 0.5f);
             panelRect.sizeDelta = new Vector2(1120.0f, 0.0f);
 
-            GaussianSplatRendererUI generatedUi = AddGeneratedUdonSharpComponent<GaussianSplatRendererUI>(canvasObject, "Add Gaussian Splat Renderer UI");
+            GaussianSplatRendererUI generatedUi = AddGeneratedComponent<GaussianSplatRendererUI>(canvasObject, "Add Gaussian Splat Renderer UI");
 
             GameObject bodyRow = CreateHorizontalGroup("Body Row", panelObject.transform, 18.0f, false);
             SetPreferredHeight(bodyRow, 900.0f, 0.0f);
@@ -223,10 +217,10 @@ namespace GaussianSplatting.Editor
                 GameObject row = CreateHorizontalGroup(baseName + " Row", settingsColumn.transform, 8.0f, false);
                 label = CreateTextElement(baseName + " Label", row.transform, labelText, 16, TextAnchor.MiddleLeft);
                 SetPreferredWidth(label.gameObject, 210.0f, 1.0f);
-                AddUdonSharpButtonEvent(CreateButtonElement(baseName + " Down", row.transform, "-", decrementColor, 42.0f, 0.0f), generatedUi, downEvent);
+                AddButtonEvent(CreateButtonElement(baseName + " Down", row.transform, "-", decrementColor, 42.0f, 0.0f), generatedUi, downEvent);
                 value = CreateTextElement(baseName + " Value", row.transform, valueText, 16, TextAnchor.MiddleCenter);
                 SetPreferredWidth(value.gameObject, 72.0f, 0.0f);
-                AddUdonSharpButtonEvent(CreateButtonElement(baseName + " Up", row.transform, "+", incrementColor, 42.0f, 0.0f), generatedUi, upEvent);
+                AddButtonEvent(CreateButtonElement(baseName + " Up", row.transform, "+", incrementColor, 42.0f, 0.0f), generatedUi, upEvent);
             }
             void CreateToggleSetting(string baseName, string labelText, string buttonLabel, string eventName, out TextMeshProUGUI label, out Button button)
             {
@@ -234,7 +228,7 @@ namespace GaussianSplatting.Editor
                 label = CreateTextElement(baseName + " Label", row.transform, labelText, 16, TextAnchor.MiddleLeft);
                 SetPreferredWidth(label.gameObject, 210.0f, 1.0f);
                 button = CreateButtonElement(baseName + " Button", row.transform, buttonLabel, inactiveButtonColor, 72.0f, 0.0f);
-                AddUdonSharpButtonEvent(button, generatedUi, eventName);
+                AddButtonEvent(button, generatedUi, eventName);
             }
             void CreateSliderSetting(string baseName, string labelText, float minValue, float maxValue, bool wholeNumbers, string valueText, float labelFlexibleWidth, out TextMeshProUGUI label, out Slider slider, out TextMeshProUGUI value)
             {
@@ -260,8 +254,8 @@ namespace GaussianSplatting.Editor
             Button japaneseLanguageButton = CreateButtonElement("Japanese Button", languageRow.transform, "日本語", new Color(0.2f, 0.2f, 0.24f, 1.0f), 0.0f, 1.0f);
             generatedUi.englishLanguageButton = englishLanguageButton;
             generatedUi.japaneseLanguageButton = japaneseLanguageButton;
-            AddUdonSharpButtonEvent(englishLanguageButton, generatedUi, nameof(GaussianSplatRendererUI.SetLanguageEnglish));
-            AddUdonSharpButtonEvent(japaneseLanguageButton, generatedUi, nameof(GaussianSplatRendererUI.SetLanguageJapanese));
+            AddButtonEvent(englishLanguageButton, generatedUi, nameof(GaussianSplatRendererUI.SetLanguageEnglish));
+            AddButtonEvent(japaneseLanguageButton, generatedUi, nameof(GaussianSplatRendererUI.SetLanguageJapanese));
 
             generatedUi.qualitySectionText = CreateTextElement("Quality Section", settingsColumn.transform, "Quality", 18, TextAnchor.MiddleLeft);
             GameObject qualityRow = CreateHorizontalGroup("Quality Row", settingsColumn.transform, 8.0f, false);
@@ -269,18 +263,16 @@ namespace GaussianSplatting.Editor
             generatedUi.qualityLowButton = CreateButtonElement("Quality Low Button", qualityRow.transform, "Low", new Color(0.2f, 0.2f, 0.24f, 1.0f), 0.0f, 1.0f);
             generatedUi.qualityMediumButton = CreateButtonElement("Quality Medium Button", qualityRow.transform, "Medium", new Color(0.2f, 0.2f, 0.24f, 1.0f), 0.0f, 1.0f);
             generatedUi.qualityHighButton = CreateButtonElement("Quality High Button", qualityRow.transform, "High", new Color(0.2f, 0.2f, 0.24f, 1.0f), 0.0f, 1.0f);
-            AddUdonSharpButtonEvent(generatedUi.qualityVeryLowButton, generatedUi, nameof(GaussianSplatRendererUI.SetQualityVeryLow));
-            AddUdonSharpButtonEvent(generatedUi.qualityLowButton, generatedUi, nameof(GaussianSplatRendererUI.SetQualityLow));
-            AddUdonSharpButtonEvent(generatedUi.qualityMediumButton, generatedUi, nameof(GaussianSplatRendererUI.SetQualityMedium));
-            AddUdonSharpButtonEvent(generatedUi.qualityHighButton, generatedUi, nameof(GaussianSplatRendererUI.SetQualityHigh));
+            AddButtonEvent(generatedUi.qualityVeryLowButton, generatedUi, nameof(GaussianSplatRendererUI.SetQualityVeryLow));
+            AddButtonEvent(generatedUi.qualityLowButton, generatedUi, nameof(GaussianSplatRendererUI.SetQualityLow));
+            AddButtonEvent(generatedUi.qualityMediumButton, generatedUi, nameof(GaussianSplatRendererUI.SetQualityMedium));
+            AddButtonEvent(generatedUi.qualityHighButton, generatedUi, nameof(GaussianSplatRendererUI.SetQualityHigh));
 
             generatedUi.advancedSettingsButton = CreateButtonElement("Advanced Settings Button", settingsColumn.transform, "Show Advanced Settings", inactiveButtonColor, 0.0f, 1.0f);
-            AddUdonSharpButtonEvent(generatedUi.advancedSettingsButton, generatedUi, nameof(GaussianSplatRendererUI.ToggleAdvancedSettings));
+            AddButtonEvent(generatedUi.advancedSettingsButton, generatedUi, nameof(GaussianSplatRendererUI.ToggleAdvancedSettings));
 
             generatedUi.materialSectionText = CreateTextElement("Settings Section", settingsColumn.transform, "Material Settings", 18, TextAnchor.MiddleLeft);
             CreateSliderSetting("SH Band", "SH Band", 0.0f, 3.0f, true, "3", 0.0f, out generatedUi.shBandLabelText, out generatedUi.shBandSlider, out generatedUi.shBandText);
-            CreateToggleSetting("VRC Light Volumes", "VRC Light Volumes", "Off", nameof(GaussianSplatRendererUI.ToggleVrcLightVolumes), out generatedUi.vrcLightVolumesLabelText, out generatedUi.vrcLightVolumesButton);
-            CreateSliderSetting("Light Volume Intensity", "Light Volume Intensity", 0.0f, 4.0f, false, "1", 0.0f, out generatedUi.lightVolumeIntensityLabelText, out generatedUi.lightVolumeIntensitySlider, out generatedUi.lightVolumeIntensityText);
             CreateSliderSetting("AntiAliasing", "Antialiasing", 0.0f, 3.0f, false, "1", 0.0f, out generatedUi.antiAliasingLabelText, out generatedUi.antiAliasingSlider, out generatedUi.antiAliasingText);
             CreateStepperSetting("Gaussian Scale", "Gaussian Scale", "1", nameof(GaussianSplatRendererUI.DecreaseGaussianScale), nameof(GaussianSplatRendererUI.IncreaseGaussianScale), out generatedUi.gaussianScaleLabelText, out generatedUi.gaussianScaleText);
             CreateSliderSetting("Alpha Cutoff", "Alpha Cutoff\n(lower = better quality)", 0.005f, 0.3f, false, "0.04", 0.0f, out generatedUi.alphaCutoffLabelText, out generatedUi.alphaCutoffSlider, out generatedUi.alphaCutoffText);
@@ -309,11 +301,6 @@ namespace GaussianSplatting.Editor
             EditorUtility.SetDirty(canvasObject);
             EditorUtility.SetDirty(renderer);
             EditorUtility.SetDirty(generatedUi);
-            Component generatedUiBacking = GetBackingUdonBehaviour(generatedUi);
-            if (generatedUiBacking != null)
-            {
-                EditorUtility.SetDirty(generatedUiBacking);
-            }
 
             if (select) Selection.activeGameObject = canvasObject;
         }
@@ -386,24 +373,6 @@ namespace GaussianSplatting.Editor
             }
 
             return null;
-        }
-
-        static Type GetVrChatUiShapeType()
-        {
-            if (_cachedVrChatUiShapeType == null)
-            {
-                _cachedVrChatUiShapeType = FindTypeInLoadedAssemblies("VRC.SDK3.Components.VRCUiShape", "VRCUiShape") ?? FindTypeInLoadedAssemblies("VRC.SDKBase.VRC_UiShape", "VRC_UiShape");
-            }
-            return _cachedVrChatUiShapeType;
-        }
-
-        static void TryAddVrChatUiShape(GameObject targetObject)
-        {
-            Type vrChatUiShapeType = targetObject != null ? GetVrChatUiShapeType() : null;
-            if (vrChatUiShapeType != null && targetObject.GetComponent(vrChatUiShapeType) == null)
-            {
-                targetObject.AddComponent(vrChatUiShapeType);
-            }
         }
 
         static TMP_FontAsset GetUiTextMeshProFont()
@@ -592,18 +561,10 @@ namespace GaussianSplatting.Editor
             if (graphic != null) graphic.material = GetSupersampledUiMaterial();
         }
 
-        static T AddGeneratedUdonSharpComponent<T>(GameObject targetObject, string undoLabel) where T : UdonSharpBehaviour
+        static T AddGeneratedComponent<T>(GameObject targetObject, string undoLabel) where T : MonoBehaviour
         {
             Undo.RegisterCompleteObjectUndo(targetObject, undoLabel);
-            return targetObject.AddUdonSharpComponent<T>();
-        }
-
-        static Component GetBackingUdonBehaviour(UdonSharpBehaviour proxyBehaviour)
-        {
-            if (proxyBehaviour == null) return null;
-            MethodInfo method = typeof(UdonSharpEditorUtility).GetMethod("GetBackingUdonBehaviour", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
-            if (method == null) return null;
-            return method.Invoke(null, new object[] { proxyBehaviour }) as Component;
+            return Undo.AddComponent<T>(targetObject);
         }
 
         static void EnsureFolderExists(string folderPath)
@@ -621,16 +582,20 @@ namespace GaussianSplatting.Editor
             }
         }
 
-        static void AddUdonSharpButtonEvent(Button button, UdonSharpBehaviour targetBehaviour, string eventName)
+        // Wires the button straight to a parameterless public method on the behaviour. Udon needed a
+        // SendCustomEvent(string) indirection here; a plain persistent listener replaces it.
+        static void AddButtonEvent(Button button, MonoBehaviour targetBehaviour, string methodName)
         {
-            if (button == null || targetBehaviour == null || string.IsNullOrEmpty(eventName)) return;
-            Component backingBehaviour = GetBackingUdonBehaviour(targetBehaviour);
-            if (backingBehaviour == null) return;
-            MethodInfo sendCustomEventMethod = backingBehaviour.GetType().GetMethod("SendCustomEvent", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic, null, new[] { typeof(string) }, null);
-            if (sendCustomEventMethod == null) return;
-            UnityAction<string> sendCustomEvent = (UnityAction<string>)Delegate.CreateDelegate(typeof(UnityAction<string>), backingBehaviour, sendCustomEventMethod);
-            UnityEventTools.AddStringPersistentListener(button.onClick, sendCustomEvent, eventName);
-            EditorUtility.SetDirty(backingBehaviour);
+            if (button == null || targetBehaviour == null || string.IsNullOrEmpty(methodName)) return;
+            MethodInfo method = targetBehaviour.GetType().GetMethod(methodName, BindingFlags.Instance | BindingFlags.Public);
+            if (method == null || method.ReturnType != typeof(void) || method.GetParameters().Length != 0)
+            {
+                Debug.LogWarning("GaussianSplatUiBuilder: no public void " + methodName + "() on " + targetBehaviour.GetType().Name + "; button left unwired.");
+                return;
+            }
+            UnityAction action = (UnityAction)Delegate.CreateDelegate(typeof(UnityAction), targetBehaviour, method);
+            UnityEventTools.AddVoidPersistentListener(button.onClick, action);
+            EditorUtility.SetDirty(targetBehaviour);
         }
 
         static Material CreateOpaqueBackgroundMaterial(string assetName, Color color)
@@ -789,7 +754,6 @@ namespace GaussianSplatting.Editor
             RectTransform labelRect = label.rectTransform;
             labelRect.anchorMin = Vector2.zero; labelRect.anchorMax = Vector2.one;
             labelRect.offsetMin = new Vector2(8.0f, 4.0f); labelRect.offsetMax = new Vector2(-8.0f, -4.0f);
-            TryAddVrChatUiShape(rectTransform.gameObject);
             return button;
         }
 
@@ -821,7 +785,7 @@ namespace GaussianSplatting.Editor
                 Sprite icon = AssetDatabase.LoadAssetAtPath<Sprite>(SocialTextureFolder + keys[i] + ".png");
                 qrSprites[i] = AssetDatabase.LoadAssetAtPath<Sprite>(SocialTextureFolder + "qr_" + keys[i] + ".png");
                 Button iconButton = CreateIconButton("Social " + keys[i], iconParent, icon, 25.0f);
-                AddUdonSharpButtonEvent(iconButton, ui, events[i]);
+                AddButtonEvent(iconButton, ui, events[i]);
             }
 
             // Floating window with its own opaque plate, centered on the menu and pushed physically forward
@@ -859,7 +823,7 @@ namespace GaussianSplatting.Editor
             SetPreferredWidth(urlField.gameObject, 432.0f, 0.0f);
 
             Button closeButton = CreateButtonElement("Social Close", content.transform, "Close", new Color(0.3f, 0.16f, 0.14f, 1.0f), 180.0f, 0.0f);
-            AddUdonSharpButtonEvent(closeButton, ui, nameof(GaussianSplatRendererUI.CloseSocial));
+            AddButtonEvent(closeButton, ui, nameof(GaussianSplatRendererUI.CloseSocial));
 
             window.gameObject.SetActive(false);
             ui.socialPanel = window.gameObject;
@@ -889,7 +853,6 @@ namespace GaussianSplatting.Editor
             layoutElement.preferredWidth = layoutElement.minWidth = size;
             layoutElement.preferredHeight = layoutElement.minHeight = size;
             layoutElement.flexibleWidth = 0.0f;
-            TryAddVrChatUiShape(rectTransform.gameObject);
             return button;
         }
 
@@ -929,7 +892,6 @@ namespace GaussianSplatting.Editor
             inputField.richText = false;
             inputField.lineType = TMP_InputField.LineType.SingleLine;
             inputField.restoreOriginalTextOnEscape = false;
-            TryAddVrChatUiShape(rectTransform.gameObject);
             return inputField;
         }
 
@@ -963,7 +925,6 @@ namespace GaussianSplatting.Editor
             slider.fillRect = fill;
             slider.handleRect = handle;
             slider.targetGraphic = handleImage;
-            TryAddVrChatUiShape(rectTransform.gameObject);
             return slider;
         }
 

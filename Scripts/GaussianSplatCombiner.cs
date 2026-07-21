@@ -1,14 +1,10 @@
 using UnityEngine;
-using UdonSharp;
-using VRC.SDKBase;
-using VRC.SDK3.Rendering;
 
-#if UNITY_EDITOR && !COMPILER_UDONSHARP
+#if UNITY_EDITOR
 using System;
 using System.Collections.Generic;
 using UnityEditor;
 using UnityEngine.SceneManagement;
-using UdonSharpEditor;
 #endif
 
 namespace GaussianSplatting
@@ -19,8 +15,7 @@ namespace GaussianSplatting
 /// behaves like a single GaussianSplatObject (SH0) that the renderer drives through its sort/render
 /// path. The renderer delegates all combine work to this component.
 /// </summary>
-[UdonBehaviourSyncMode(BehaviourSyncMode.None)]
-public partial class GaussianSplatCombiner : UdonSharpBehaviour
+public partial class GaussianSplatCombiner : MonoBehaviour
 {
     const int MAX_COMBINED_SPLAT_COUNT = 1 << 24;
 
@@ -85,7 +80,7 @@ public partial class GaussianSplatCombiner : UdonSharpBehaviour
     [System.NonSerialized] float _lodDirectionalBias = 2.0f;
     [System.NonSerialized] int _lodShBand = 3;
     [System.NonSerialized] int[] _lodOutputCounts;
-#if UNITY_EDITOR && !COMPILER_UDONSHARP
+#if UNITY_EDITOR
     // Editor-only LOD debug preview flag. Must be static (not an instance field) so it stays out
     // of UdonSharp's proxy->Udon serialization surface: as an instance field UdonSharp's formatter
     // tried to serialize it despite [NonSerialized] and the Udon program (compiled without this
@@ -223,7 +218,7 @@ public partial class GaussianSplatCombiner : UdonSharpBehaviour
     public void SetLodDirectionalBias(float value) { _lodDirectionalBias = Mathf.Clamp(value, 1.0f, 16.0f); }
     public void SetLodShBand(int value) { _lodShBand = Mathf.Clamp(value, 0, 3); }
     public int GetFusedShDroppedObjectCount() { return lodShDroppedObjects; }
-#if UNITY_EDITOR && !COMPILER_UDONSHARP
+#if UNITY_EDITOR
     public void SetEditorDebugLodColors(bool value) { _debugLodColors = value; }
 #endif
 
@@ -260,7 +255,7 @@ public partial class GaussianSplatCombiner : UdonSharpBehaviour
 
     GaussianSplatRenderer GetOwnerRenderer()
     {
-#if UNITY_EDITOR && !COMPILER_UDONSHARP
+#if UNITY_EDITOR
         if (gaussianSplatRenderer == null || gaussianSplatRenderer.gameObject == null || gaussianSplatRenderer.gameObject.scene != gameObject.scene)
         {
             gaussianSplatRenderer = GaussianSplatRenderer.FindExistingSceneRenderer(gameObject.scene);
@@ -315,7 +310,7 @@ public partial class GaussianSplatCombiner : UdonSharpBehaviour
             return new Material[0];
         }
 
-#if UNITY_EDITOR && !COMPILER_UDONSHARP
+#if UNITY_EDITOR
         if (!Application.isPlaying)
         {
             return renderer.sharedMaterials;
@@ -391,30 +386,17 @@ public partial class GaussianSplatCombiner : UdonSharpBehaviour
 
     void Blit(Texture source, RenderTexture target, bool useEditorOps)
     {
-#if UNITY_EDITOR && !COMPILER_UDONSHARP
-        if (useEditorOps)
-        {
-            Graphics.Blit(source, target);
-            return;
-        }
-#endif
-        VRCGraphics.Blit(source, target);
+        Graphics.Blit(source, target);
     }
 
     void Blit(RenderTexture target, Material material, int pass, bool useEditorOps)
     {
-#if UNITY_EDITOR && !COMPILER_UDONSHARP
-        if (useEditorOps)
-        {
-            Graphics.Blit(null, target, material, pass);
-            return;
-        }
-#endif
-        VRCGraphics.Blit(null, target, material, pass);
+        Graphics.Blit(null, target, material, pass);
     }
 
-    void SetRenderOrderOnMaterials(Material[] materials, int actualCount, RenderTexture splatRenderOrder, RenderTexture splatRenderOrderPhoto)
+    void SetRenderOrderOnMaterials(Material[] materials, int actualCount, RenderTexture splatRenderOrder)
     {
+        GaussianSplatRuntimeRegistry.RegisterMaterials(materials);
         int positionBlocksPerRow = Mathf.Max(1, combinedPositions != null ? combinedPositions.width >> 2 : 1);
         int positionCoordMask = positionBlocksPerRow - 1;
         int positionCoordShift = ComputeTextureCoordShift(positionBlocksPerRow);
@@ -426,7 +408,6 @@ public partial class GaussianSplatCombiner : UdonSharpBehaviour
                 continue;
             }
             if (material.HasProperty("_GS_RenderOrder")) material.SetTexture("_GS_RenderOrder", splatRenderOrder);
-            if (material.HasProperty("_GS_RenderOrderPhoto")) material.SetTexture("_GS_RenderOrderPhoto", splatRenderOrderPhoto);
             if (material.HasProperty("_ActualSplatCount")) material.SetInt("_ActualSplatCount", actualCount);
             if (material.HasProperty("_GS_Positions")) material.SetTexture("_GS_Positions", combinedPositions);
             if (material.HasProperty("_GS_Rotations")) material.SetTexture("_GS_Rotations", combinedRotations);
@@ -611,7 +592,7 @@ public partial class GaussianSplatCombiner : UdonSharpBehaviour
         lodUnifiedCombineMaterial.SetInt("_LODFusedShCoordMask", lodUnifiedShCoordMask);
         lodUnifiedCombineMaterial.SetFloat("_SHBand", _lodShBand);
         lodUnifiedCombineMaterial.SetVector("_LODCameraPosWorld", screenCameraPos);
-#if UNITY_EDITOR && !COMPILER_UDONSHARP
+#if UNITY_EDITOR
         lodUnifiedCombineMaterial.SetInt("_LODDebugColors", _debugLodColors ? 1 : 0);
 #else
         lodUnifiedCombineMaterial.SetInt("_LODDebugColors", 0);
@@ -624,12 +605,12 @@ public partial class GaussianSplatCombiner : UdonSharpBehaviour
         return true;
     }
 
-    public bool UpdateTextures(GaussianSplatObject[] sceneLods, Vector3 screenCameraPos, Vector3 lodCameraPos, Vector3 lodCameraForward, Vector3 photoCameraPos, bool updatePhotoCameraColors, int lodSplatBudget, Vector4 lodScreenParams, bool adaptLodSelection, bool forceMinLodAlpha, bool useEditorOps)
+    public bool UpdateTextures(GaussianSplatObject[] sceneLods, Vector3 screenCameraPos, Vector3 lodCameraPos, Vector3 lodCameraForward, int lodSplatBudget, Vector4 lodScreenParams, bool adaptLodSelection, bool forceMinLodAlpha, bool useEditorOps)
     {
         _sceneLods = sceneLods != null ? sceneLods : new GaussianSplatObject[0];
         ResetLODOutputCounts(_sceneLods.Length);
         float lodTargetScale = lodSplatBudget > 0 ? Mathf.Clamp(_lodSplatTargetScale, 0.01f, 1.0f) : 1.0f;
-#if UNITY_EDITOR && !COMPILER_UDONSHARP
+#if UNITY_EDITOR
         SetEditorReadback(0, 0, 0.0f);
 #endif
         if (combinedSortedRenderer == null || combinedPositions == null || combinedRotations == null || combinedScales == null || combinedColors == null || combinedColorsCamera == null)
@@ -638,7 +619,7 @@ public partial class GaussianSplatCombiner : UdonSharpBehaviour
         }
         if (combinedSortedRenderer == null || combinedPositions == null || combinedRotations == null || combinedScales == null || combinedColors == null || combinedColorsCamera == null)
         {
-#if !UNITY_EDITOR || COMPILER_UDONSHARP
+#if !UNITY_EDITOR
             Debug.LogError("Gaussian splat renderer is missing generated resources. Refresh the GaussianSplatRenderer in the editor.");
 #endif
             return false;
@@ -660,7 +641,7 @@ public partial class GaussianSplatCombiner : UdonSharpBehaviour
         Blit(Texture2D.blackTexture, combinedScales, useEditorOps);
         Blit(Texture2D.blackTexture, combinedColors, useEditorOps);
         int combinedOffset = 0;
-#if UNITY_EDITOR && !COMPILER_UDONSHARP
+#if UNITY_EDITOR
         int editorReadbackCount = 0;
         float editorReadbackAlpha = 0.0f;
 #endif
@@ -673,7 +654,7 @@ public partial class GaussianSplatCombiner : UdonSharpBehaviour
             {
                 _combinedActualSplatCount = 0;
                 SetRendererEnabled(false);
-#if !UNITY_EDITOR || COMPILER_UDONSHARP
+#if !UNITY_EDITOR
                 Debug.LogError("Combined Gaussian splat resources are too small for the baked non-LOD fused region. Refresh the renderer resources in the editor.");
 #endif
                 return false;
@@ -703,7 +684,7 @@ public partial class GaussianSplatCombiner : UdonSharpBehaviour
                 return false;
             }
             combinedOffset = bakedNonLodCount + sceneHardBudget;
-#if UNITY_EDITOR && !COMPILER_UDONSHARP
+#if UNITY_EDITOR
             if (useEditorOps)
             {
                 int sel = ReadbackUnifiedLODSelected(out float ua, true);
@@ -724,38 +705,17 @@ public partial class GaussianSplatCombiner : UdonSharpBehaviour
             return false;
         }
         int actualCombinedCount = combinedOffset;
-#if UNITY_EDITOR && !COMPILER_UDONSHARP
+#if UNITY_EDITOR
         if (useEditorOps)
         {
             actualCombinedCount = Mathf.Min(combinedOffset, Mathf.Max(0, editorReadbackCount));
         }
 #endif
         _combinedActualSplatCount = actualCombinedCount;
-#if UNITY_EDITOR && !COMPILER_UDONSHARP
+#if UNITY_EDITOR
         SetEditorReadback(useEditorOps ? actualCombinedCount : combinedOffset, combinedOffset, useEditorOps ? editorReadbackAlpha : 0.0f);
 #endif
 
-#if UNITY_EDITOR && !COMPILER_UDONSHARP
-        if (useEditorOps)
-        {
-            return true;
-        }
-#endif
-
-        if (!updatePhotoCameraColors)
-        {
-            return true;
-        }
-
-        // Photo/mirror camera colors: re-run ONLY the unified combine's color pass with the photo camera
-        // (view-dependent SH differs per camera). Every other binding persists from this frame's combine,
-        // so the whole [0, selected) output is recolored in one blit into combinedColorsCamera.
-        Blit(Texture2D.blackTexture, combinedColorsCamera, false);
-        if (lodFusedObjectCount > 0 && lodUnifiedCombineMaterial != null)
-        {
-            lodUnifiedCombineMaterial.SetVector("_LODCameraPosWorld", photoCameraPos);
-            Blit(combinedColorsCamera, lodUnifiedCombineMaterial, 3, false);
-        }
         return true;
     }
 
@@ -765,7 +725,7 @@ public partial class GaussianSplatCombiner : UdonSharpBehaviour
     /// renderer to bind sort keys against. Returns false (and disables the combined object) when the
     /// combined resources are not ready.
     /// </summary>
-    public bool BindRenderOrder(RenderTexture splatRenderOrder, RenderTexture splatRenderOrderPhoto, out MeshRenderer sortedRenderer, out Material primaryMaterial, out Texture positions, out int count)
+    public bool BindRenderOrder(RenderTexture splatRenderOrder, out MeshRenderer sortedRenderer, out Material primaryMaterial, out Texture positions, out int count)
     {
         BindDefaultBucketResources();
         sortedRenderer = null;
@@ -778,7 +738,7 @@ public partial class GaussianSplatCombiner : UdonSharpBehaviour
             return false;
         }
         Transform combinedRoot = combinedSortedRenderer.transform;
-        SetRenderOrderOnMaterials(GetRendererMaterialsForWrite(combinedSortedRenderer), _combinedActualSplatCount, splatRenderOrder, splatRenderOrderPhoto);
+        SetRenderOrderOnMaterials(GetRendererMaterialsForWrite(combinedSortedRenderer), _combinedActualSplatCount, splatRenderOrder);
         for (int i = 0; i < combinedRoot.childCount; i++)
         {
             if (!TryGetCombinedChunkBinding(combinedRoot.GetChild(i), out MeshRenderer chunkRenderer, out int offset))
@@ -794,7 +754,7 @@ public partial class GaussianSplatCombiner : UdonSharpBehaviour
             {
                 chunkRenderer.enabled = shouldRender;
             }
-            SetRenderOrderOnMaterials(GetRendererMaterialsForWrite(chunkRenderer), _combinedActualSplatCount, splatRenderOrder, splatRenderOrderPhoto);
+            SetRenderOrderOnMaterials(GetRendererMaterialsForWrite(chunkRenderer), _combinedActualSplatCount, splatRenderOrder);
             if (shouldRender && sortedRenderer == null)
             {
                 sortedRenderer = chunkRenderer;
@@ -809,7 +769,7 @@ public partial class GaussianSplatCombiner : UdonSharpBehaviour
         return true;
     }
 
-#if UNITY_EDITOR && !COMPILER_UDONSHARP
+#if UNITY_EDITOR
     void SetEditorReadback(int renderedSplatCount, int reservedSplatCount, float alpha)
     {
         _editorReadbackRenderedSplatCounts[this] = renderedSplatCount;

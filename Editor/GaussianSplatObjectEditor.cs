@@ -1,6 +1,5 @@
 #if UNITY_EDITOR
 using System.Reflection;
-using UdonSharpEditor;
 using UnityEditor;
 using UnityEngine;
 
@@ -35,15 +34,6 @@ namespace GaussianSplatting.Editor
 
         public override void OnInspectorGUI()
         {
-            if (targets != null && targets.Length > 1)
-            {
-                UdonSharpGUI.DrawDefaultUdonSharpBehaviourHeader(targets);
-            }
-            else
-            {
-                UdonSharpGUI.DrawDefaultUdonSharpBehaviourHeader(target);
-            }
-
             serializedObject.Update();
             DrawEditableMetadata();
             serializedObject.ApplyModifiedProperties();
@@ -52,16 +42,6 @@ namespace GaussianSplatting.Editor
             {
                 EditorGUILayout.Space();
                 DrawImportedDataSummary((GaussianSplatObject)target);
-            }
-
-            EditorGUILayout.Space();
-            if (targets != null && targets.Length > 1)
-            {
-                UdonSharpGUI.DrawUtilities(targets);
-            }
-            else
-            {
-                UdonSharpGUI.DrawUtilities(target);
             }
         }
 

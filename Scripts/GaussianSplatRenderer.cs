@@ -1,15 +1,12 @@
 using UnityEngine;
-using UdonSharp;
-using VRC.SDKBase;
-using VRC.SDK3.Rendering;
+using UnityEngine.Rendering;
 
 namespace GaussianSplatting
 {
 
-[UdonBehaviourSyncMode(BehaviourSyncMode.None)]
-public partial class GaussianSplatRenderer : UdonSharpBehaviour
+public partial class GaussianSplatRenderer : MonoBehaviour
 {
-    const int MAX_CAMERA_COUNT = 2;
+    const int MAX_CAMERA_COUNT = 1;
     // Number of pre-baked combined-resource sets the renderer can switch between at runtime by LOD budget,
     // without reallocating. VRAM COST: each tier holds its own combined position/rotation/scale/color/
     // colorsCamera textures + radix sort buffers + render-order RTs, so total VRAM is roughly the sum over
@@ -19,7 +16,6 @@ public partial class GaussianSplatRenderer : UdonSharpBehaviour
     public const int COMBINED_BUCKET_HIGH_TIER = COMBINED_BUCKET_TIER_COUNT - 1;
     const int MAX_COMBINED_SPLAT_COUNT = 1 << 24;
     const int SCREEN_CAMERA_ID = 0;
-    const int PHOTO_CAMERA_ID = 1;
     const int DEFAULT_START_RENDER_QUEUE = 4050;
     const float DEFAULT_ALPHA_CUTOFF = 0.04f;
     const float DEFAULT_ALPHA_CULL = 0.04f;
@@ -97,11 +93,9 @@ public partial class GaussianSplatRenderer : UdonSharpBehaviour
     [Header("Render Settings")]
     [Tooltip("Quantization of camera position to avoid unnecessary updates and jitter. Set to 0 to disable. Default is 10 cm.")]
     [SerializeField] float cameraPositionQuantization = 0.1f;
-    // Per-frame render-order holders are rebound from the serialized bucket arrays; never serialize these.
+    // Per-frame render-order holder is rebound from the serialized bucket arrays; never serialize it.
     [System.NonSerialized] public RenderTexture splatRenderOrder;
-    [System.NonSerialized] public RenderTexture splatRenderOrderPhoto;
     [HideInInspector, SerializeField] RenderTexture[] splatRenderOrderByBucket;
-    [HideInInspector, SerializeField] RenderTexture[] splatRenderOrderPhotoByBucket;
 
     [Tooltip("If true, the material properties will be overridden with the values set in this script. If false, the material properties will be set to their default values.")]
     [SerializeField] public bool overrideMaterialProperties;
@@ -120,10 +114,8 @@ public partial class GaussianSplatRenderer : UdonSharpBehaviour
     [Range(0.0f, 5.0f)] [SerializeField] float opacity = 1.0f;
     [SerializeField] Vector3 oklchShift = Vector3.zero;
     [SerializeField] float gamma = 1.0f;
-    [SerializeField] bool useVrcLightVolumes;
-    [Range(0.0f, 4.0f)] [SerializeField] float lightVolumeIntensity = 1.0f;
 
-#if UNITY_EDITOR && !COMPILER_UDONSHARP
+#if UNITY_EDITOR
     static bool _editorRefreshQueued = true;
 #endif
 
@@ -157,7 +149,7 @@ public partial class GaussianSplatRenderer : UdonSharpBehaviour
 
     bool SuppressStartupRendering()
     {
-#if UNITY_EDITOR && !COMPILER_UDONSHARP
+#if UNITY_EDITOR
         if (!Application.isPlaying)
         {
             return false;
@@ -178,7 +170,7 @@ public partial class GaussianSplatRenderer : UdonSharpBehaviour
     void InvalidateCombinedSort()
     {
         ResetCameraPositions();
-#if UNITY_EDITOR && !COMPILER_UDONSHARP
+#if UNITY_EDITOR
         if (!Application.isPlaying)
         {
             QueueEditorRefresh();
@@ -206,7 +198,7 @@ public partial class GaussianSplatRenderer : UdonSharpBehaviour
         // The combiner lives on the serialized "CombinedSorted" object. At runtime we
         // rely on the serialized reference only; calling GameObject.Find here would be
         // unsafe (e.g. during OnDisable it trips Unity's go.IsActive() assertion).
-#if UNITY_EDITOR && !COMPILER_UDONSHARP
+#if UNITY_EDITOR
         GameObject combinedObject = GameObject.Find("CombinedSorted");
         if (combinedObject != null)
         {
@@ -249,7 +241,7 @@ public partial class GaussianSplatRenderer : UdonSharpBehaviour
             return new Material[0];
         }
 
-#if UNITY_EDITOR && !COMPILER_UDONSHARP
+#if UNITY_EDITOR
         if (!Application.isPlaying)
         {
             return renderer.sharedMaterials;
@@ -439,8 +431,6 @@ public partial class GaussianSplatRenderer : UdonSharpBehaviour
         }
         TryGetTierTexture(splatRenderOrderByBucket, tier, out RenderTexture order);
         splatRenderOrder = order;
-        TryGetTierTexture(splatRenderOrderPhotoByBucket, tier, out RenderTexture orderPhoto);
-        splatRenderOrderPhoto = orderPhoto;
         if (_radixSort != null)
         {
             _radixSort.UseBucketResources(tier);
@@ -478,7 +468,6 @@ public partial class GaussianSplatRenderer : UdonSharpBehaviour
     bool IsBucketTierFullyAvailable(int tier, GaussianSplatCombiner sceneCombiner)
     {
         return TryGetTierTexture(splatRenderOrderByBucket, tier, out RenderTexture order)
-            && TryGetTierTexture(splatRenderOrderPhotoByBucket, tier, out RenderTexture orderPhoto)
             && (_radixSort == null || _radixSort.HasBucketResources(tier))
             && (sceneCombiner == null || sceneCombiner.HasBucketResources(tier));
     }
@@ -491,18 +480,16 @@ public partial class GaussianSplatRenderer : UdonSharpBehaviour
 
     bool BindDefaultSortResources()
     {
-        if (splatRenderOrder != null && splatRenderOrderPhoto != null)
+        if (splatRenderOrder != null)
         {
             return true;
         }
         int maxTier = splatRenderOrderByBucket != null ? splatRenderOrderByBucket.Length - 1 : -1;
         for (int tier = maxTier; tier >= 0; tier--)
         {
-            if (TryGetTierTexture(splatRenderOrderByBucket, tier, out RenderTexture order)
-                && TryGetTierTexture(splatRenderOrderPhotoByBucket, tier, out RenderTexture orderPhoto))
+            if (TryGetTierTexture(splatRenderOrderByBucket, tier, out RenderTexture order))
             {
                 splatRenderOrder = order;
-                splatRenderOrderPhoto = orderPhoto;
                 return true;
             }
         }
@@ -511,7 +498,7 @@ public partial class GaussianSplatRenderer : UdonSharpBehaviour
 
     public int GetEffectiveCombinedLodSplatBudget()
     {
-#if UNITY_EDITOR && !COMPILER_UDONSHARP
+#if UNITY_EDITOR
         // Edit-mode preview renders with the SELECTED startup setting so the editor matches the world's
         // startup state: a preset's quality fraction, or the relative Startup LOD Capacity for "Keep
         // Inspector Settings". (Play-in-editor falls through to the live requested/cap path below.)
@@ -647,9 +634,6 @@ public partial class GaussianSplatRenderer : UdonSharpBehaviour
             return;
         }
         if (material.HasProperty("_SHBand")) material.SetFloat("_SHBand", Mathf.Clamp(currentSHBand, 0, 3));
-        if (useVrcLightVolumes) material.EnableKeyword("_VRC_LIGHT_VOLUMES_ON");
-        else material.DisableKeyword("_VRC_LIGHT_VOLUMES_ON");
-        if (material.HasProperty("_LightVolumeIntensity")) material.SetFloat("_LightVolumeIntensity", lightVolumeIntensity);
         if (!overrideMaterialProperties)
         {
             return;
@@ -670,7 +654,7 @@ public partial class GaussianSplatRenderer : UdonSharpBehaviour
 
     void ApplyMaterialSettingsToSelectedObject()
     {
-#if UNITY_EDITOR && !COMPILER_UDONSHARP
+#if UNITY_EDITOR
         if (!Application.isPlaying)
         {
             return;
@@ -715,13 +699,8 @@ public partial class GaussianSplatRenderer : UdonSharpBehaviour
     }
     public float GetCameraPositionQuantization() { return cameraPositionQuantization; }
     public void SetCameraPositionQuantization(float value) { cameraPositionQuantization = Mathf.Max(0.0f, value); ResetCameraPositions(); }
-    public bool GetUseVrcLightVolumes() { return useVrcLightVolumes; }
-    public void SetUseVrcLightVolumes(bool value) { useVrcLightVolumes = value; ApplyMaterialSettingsToSelectedObject(); }
-    public void ToggleVrcLightVolumes() { SetUseVrcLightVolumes(!useVrcLightVolumes); }
     public float GetAntiAliasing() { return antiAliasing; }
     public void SetAntiAliasing(float value) { overrideMaterialProperties = true; antiAliasing = Mathf.Clamp(value, 0.0f, 3.0f); ApplyMaterialSettingsToSelectedObject(); }
-    public float GetLightVolumeIntensity() { return lightVolumeIntensity; }
-    public void SetLightVolumeIntensity(float value) { overrideMaterialProperties = true; lightVolumeIntensity = Mathf.Clamp(value, 0.0f, 4.0f); ApplyMaterialSettingsToSelectedObject(); }
     public void SetGaussianScale(float value) { overrideMaterialProperties = true; gaussianScale = Mathf.Clamp(value, 0.0f, 2.0f); ApplyMaterialSettingsToSelectedObject(); }
     public void SetAlphaCutoff(float value) { overrideMaterialProperties = true; alphaCutoff = Mathf.Clamp(value, 0.005f, 0.3f); ApplyMaterialSettingsToSelectedObject(); }
     public float GetAlphaCull() { return alphaCull; }
@@ -800,7 +779,7 @@ public partial class GaussianSplatRenderer : UdonSharpBehaviour
         return EnsureInitialized() ? GetCombinedRenderedSplatCount() : 0;
     }
 
-#if UNITY_EDITOR && !COMPILER_UDONSHARP
+#if UNITY_EDITOR
     public int GetEditorReadbackRenderedSplatCount()
     {
         GaussianSplatCombiner sceneCombiner = ResolveCombiner();
@@ -853,20 +832,17 @@ public partial class GaussianSplatRenderer : UdonSharpBehaviour
         UpdateSourceVisibility();
     }
 
-    void DisableMsaaInGame()
+    void DisableMsaaOnCamera(Camera camera)
     {
-        if (VRCCameraSettings.ScreenCamera != null)
+        if (camera != null)
         {
-            VRCCameraSettings.ScreenCamera.AllowMSAA = false;
+            camera.allowMSAA = false;
         }
     }
 
     bool IsPrimaryRendererInstance()
     {
-#if COMPILER_UDONSHARP
-        return true;
-#else
-        GaussianSplatRenderer[] renderers = UnityEngine.Object.FindObjectsOfType<GaussianSplatRenderer>();
+        GaussianSplatRenderer[] renderers = UnityEngine.Object.FindObjectsByType<GaussianSplatRenderer>(FindObjectsSortMode.None);
         if (renderers == null || renderers.Length <= 1)
         {
             return true;
@@ -888,7 +864,6 @@ public partial class GaussianSplatRenderer : UdonSharpBehaviour
         }
         Debug.LogError("Multiple GaussianSplatRenderer instances found. Only one renderer can be active in a scene.");
         return false;
-#endif
     }
 
     bool EnsureRenderTextureCreated(RenderTexture renderTexture)
@@ -946,13 +921,12 @@ public partial class GaussianSplatRenderer : UdonSharpBehaviour
         {
             keyValueMat = _radixSort.computeKeyValues;
         }
-        if (splatRenderOrder == null || splatRenderOrderPhoto == null)
+        if (splatRenderOrder == null)
         {
-            Debug.LogError("Splat Render Order textures are not assigned. Please assign RenderTextures.");
+            Debug.LogError("Splat Render Order texture is not assigned. Please assign a RenderTexture.");
             return false;
         }
         if (!EnsureRenderTextureCreated(splatRenderOrder, "Splat render order")
-            || !EnsureRenderTextureCreated(splatRenderOrderPhoto, "Splat render order photo")
             || !EnsureRenderTextureCreated(_radixSort.keyValues0, "RadixSort keyValues0")
             || !EnsureRenderTextureCreated(_radixSort.keyValues1, "RadixSort keyValues1")
             || !EnsureRenderTextureCreated(_radixSort.histograms, "RadixSort histograms")
@@ -990,21 +964,6 @@ public partial class GaussianSplatRenderer : UdonSharpBehaviour
             Mathf.Round(position.z / cameraPositionQuantization) * cameraPositionQuantization);
     }
 
-    void SetRenderOrderOnMaterials(Material[] materials, int actualCount)
-    {
-        for (int i = 0; i < materials.Length; i++)
-        {
-            Material material = materials[i];
-            if (material == null)
-            {
-                continue;
-            }
-            if (material.HasProperty("_GS_RenderOrder")) material.SetTexture("_GS_RenderOrder", splatRenderOrder);
-            if (material.HasProperty("_GS_RenderOrderPhoto")) material.SetTexture("_GS_RenderOrderPhoto", splatRenderOrderPhoto);
-            if (material.HasProperty("_ActualSplatCount")) material.SetInt("_ActualSplatCount", actualCount);
-        }
-    }
-
     bool BindKeyValuePositions(Material sourceMaterial, Texture positions, int actualCount)
     {
         if (keyValueMat == null || sourceMaterial == null || positions == null)
@@ -1022,7 +981,7 @@ public partial class GaussianSplatRenderer : UdonSharpBehaviour
     {
         _sortedRenderer = null;
         GaussianSplatCombiner combined = ResolveCombiner();
-        if (combined == null || !combined.BindRenderOrder(splatRenderOrder, splatRenderOrderPhoto, out _sortedRenderer, out Material primaryMaterial, out Texture positions, out int count))
+        if (combined == null || !combined.BindRenderOrder(splatRenderOrder, out _sortedRenderer, out Material primaryMaterial, out Texture positions, out int count))
         {
             return false;
         }
@@ -1040,7 +999,15 @@ public partial class GaussianSplatRenderer : UdonSharpBehaviour
             Debug.LogError("ComputeKeyValues material is not assigned on the RadixSort component.");
             return false;
         }
-        return UpdateCombinedBinding();
+        // The binding path funnels its material arrays through the combiner's SetRenderOrderOnMaterials,
+        // which is where the alpha-mask render queues are collected for GaussianSplatRendererFeature.
+        GaussianSplatRuntimeRegistry.BeginBinding();
+        bool bound = UpdateCombinedBinding();
+        if (bound)
+        {
+            GaussianSplatRuntimeRegistry.EndBinding();
+        }
+        return bound;
     }
 
     void OnScreenSortPublished()
@@ -1065,8 +1032,9 @@ public partial class GaussianSplatRenderer : UdonSharpBehaviour
     }
 
     // Screen-derived LOD alpha floor: x = min log2(alpha), y = focal length in pixels, z = max splats per
-    // projected pixel. Runtime uses VRChat's main screen camera; editor preview passes the SceneView camera.
-    Vector4 GetLodScreenParams(float editorPixelHeight, float editorFovYDeg)
+    // projected pixel. The caller passes the camera being rendered (game camera at runtime, SceneView
+    // camera for editor previews); fall back to the game view when no camera dimensions are supplied.
+    Vector4 GetLodScreenParams(float cameraPixelHeight, float cameraFovYDeg)
     {
         float maxPerPixel = Mathf.Max(0.0f, lodMaxSplatsPerPixel);
         if (maxPerPixel <= 0.0f)
@@ -1075,20 +1043,9 @@ public partial class GaussianSplatRenderer : UdonSharpBehaviour
         }
         float pixelHeight = 1080.0f;
         float fovYDeg = 60.0f;
-#if UNITY_EDITOR && !COMPILER_UDONSHARP
-        // Editor preview cannot safely query VRCCameraSettings.ScreenCamera. Use the SceneView camera supplied
-        // by the editor preCull path; fall back to the game view if this is called from another editor path.
-        if (editorPixelHeight > 0.0f) pixelHeight = editorPixelHeight;
+        if (cameraPixelHeight > 0.0f) pixelHeight = cameraPixelHeight;
         else if (Screen.height > 0) pixelHeight = Screen.height;
-        if (editorFovYDeg > 0.0f) fovYDeg = editorFovYDeg;
-#else
-        VRCCameraSettings screenCamera = VRCCameraSettings.ScreenCamera;
-        if (screenCamera != null)
-        {
-            if (screenCamera.PixelHeight > 0) pixelHeight = screenCamera.PixelHeight;
-            if (screenCamera.FieldOfView > 0.0f) fovYDeg = screenCamera.FieldOfView;
-        }
-#endif
+        if (cameraFovYDeg > 0.0f) fovYDeg = cameraFovYDeg;
         float tanHalf = Mathf.Tan(0.5f * fovYDeg * Mathf.Deg2Rad);
         float focalPx = tanHalf > 1e-4f ? 0.5f * pixelHeight / tanHalf : 0.0f;
         if (focalPx <= 0.0f)
@@ -1100,7 +1057,7 @@ public partial class GaussianSplatRenderer : UdonSharpBehaviour
         return new Vector4(minLogAlpha, focalPx, maxPerPixel, 0.0f);
     }
 
-    bool UpdateCombinedTexturesForSort(GaussianSplatCombiner combined, Vector3 screenCamPos, Vector3 lodCameraPos, Vector3 lodCameraForward, Vector3 photoCamPos, bool updatePhotoCameraColors, int lodSplatBudget, Vector4 lodScreenParams, bool adaptLodSelection, bool forceMinLodAlpha, bool useEditorOps)
+    bool UpdateCombinedTexturesForSort(GaussianSplatCombiner combined, Vector3 screenCamPos, Vector3 lodCameraPos, Vector3 lodCameraForward, int lodSplatBudget, Vector4 lodScreenParams, bool adaptLodSelection, bool forceMinLodAlpha, bool useEditorOps)
     {
         if (combined == null)
         {
@@ -1113,11 +1070,11 @@ public partial class GaussianSplatRenderer : UdonSharpBehaviour
             // rebind it for the sort.
             return UpdateSortBinding();
         }
-        return combined.UpdateTextures(_sceneLods, screenCamPos, lodCameraPos, lodCameraForward, photoCamPos, updatePhotoCameraColors, lodSplatBudget, lodScreenParams, adaptLodSelection, forceMinLodAlpha, useEditorOps)
+        return combined.UpdateTextures(_sceneLods, screenCamPos, lodCameraPos, lodCameraForward, lodSplatBudget, lodScreenParams, adaptLodSelection, forceMinLodAlpha, useEditorOps)
             && UpdateSortBinding();
     }
 
-    void SortCameraViews(Vector3 screenCamPos, Vector3 screenCamForward, Vector3 photoCamPos, bool sortPhotoCamera, bool useEditorOps, float editorPixelHeight, float editorFovYDeg)
+    void SortCameraViews(Vector3 screenCamPos, Vector3 screenCamForward, bool useEditorOps, float cameraPixelHeight, float cameraFovYDeg)
     {
         if (!EnsureInitialized())
         {
@@ -1129,77 +1086,61 @@ public partial class GaussianSplatRenderer : UdonSharpBehaviour
             combined.SetLodSplatTargetScale(GetEffectiveCombinedLodTargetScale());
             combined.SetLodDirectionalBias(GetCombinedLodDirectionalBias());
             combined.SetLodShBand(GetCurrentSHBand());
-#if UNITY_EDITOR && !COMPILER_UDONSHARP
+#if UNITY_EDITOR
             combined.SetEditorDebugLodColors(useEditorOps && debugDrawLodGrid);
 #endif
         }
-#if UNITY_EDITOR && !COMPILER_UDONSHARP
-        if (useEditorOps)
-        {
-            if (combined == null || !UpdateCombinedTexturesForSort(combined, screenCamPos, screenCamPos, screenCamForward, photoCamPos, sortPhotoCamera, GetEffectiveCombinedLodSplatBudget(), GetLodScreenParams(editorPixelHeight, editorFovYDeg), true, false, true))
-            {
-                return;
-            }
-            // Editor previews need a blocking full sort for the visible SceneView camera.
-            SetSortCameraPos(screenCamPos);
-            _radixSort.RunFullSortForEditor(splatRenderOrder, SCREEN_CAMERA_ID);
-            _completedCameraPos[SCREEN_CAMERA_ID] = QuantizePosition(screenCamPos);
-            _completedCameraWorldPos[SCREEN_CAMERA_ID] = screenCamPos;
-            _hasCompletedSort[SCREEN_CAMERA_ID] = true;
-            if (sortPhotoCamera)
-            {
-                SetSortCameraPos(photoCamPos);
-                _radixSort.RunFullSortForEditor(splatRenderOrderPhoto, PHOTO_CAMERA_ID);
-                _completedCameraPos[PHOTO_CAMERA_ID] = QuantizePosition(photoCamPos);
-                _completedCameraWorldPos[PHOTO_CAMERA_ID] = photoCamPos;
-                _hasCompletedSort[PHOTO_CAMERA_ID] = true;
-            }
-            OnScreenSortPublished();
-            return;
-        }
-#endif
-
-        if (combined == null || !UpdateCombinedTexturesForSort(combined, screenCamPos, screenCamPos, screenCamForward, photoCamPos, sortPhotoCamera, GetEffectiveCombinedLodSplatBudget(), GetLodScreenParams(editorPixelHeight, editorFovYDeg), true, false, false))
+        if (combined == null || !UpdateCombinedTexturesForSort(combined, screenCamPos, screenCamPos, screenCamForward, GetEffectiveCombinedLodSplatBudget(), GetLodScreenParams(cameraPixelHeight, cameraFovYDeg), true, false, useEditorOps))
         {
             return;
         }
         SetSortCameraPos(screenCamPos);
-        _radixSort.RunFullSort(splatRenderOrder, SCREEN_CAMERA_ID);
+#if UNITY_EDITOR
+        if (useEditorOps)
+        {
+            // Editor previews need a blocking full sort for the visible SceneView camera.
+            _radixSort.RunFullSortForEditor(splatRenderOrder, SCREEN_CAMERA_ID);
+        }
+        else
+#endif
+        {
+            _radixSort.RunFullSort(splatRenderOrder, SCREEN_CAMERA_ID);
+        }
         _completedCameraPos[SCREEN_CAMERA_ID] = QuantizePosition(screenCamPos);
         _completedCameraWorldPos[SCREEN_CAMERA_ID] = screenCamPos;
         _hasCompletedSort[SCREEN_CAMERA_ID] = true;
-        if (sortPhotoCamera)
-        {
-            SetSortCameraPos(photoCamPos);
-            _radixSort.RunFullSort(splatRenderOrderPhoto, PHOTO_CAMERA_ID);
-            _completedCameraPos[PHOTO_CAMERA_ID] = QuantizePosition(photoCamPos);
-            _completedCameraWorldPos[PHOTO_CAMERA_ID] = photoCamPos;
-            _hasCompletedSort[PHOTO_CAMERA_ID] = true;
-        }
         OnScreenSortPublished();
     }
 
-    void Update()
+    void OnEnable()
     {
-        DisableMsaaInGame();
-        if (!EnsureInitialized() || VRCCameraSettings.ScreenCamera == null)
+        RenderPipelineManager.beginCameraRendering -= OnBeginCameraRendering;
+        RenderPipelineManager.beginCameraRendering += OnBeginCameraRendering;
+    }
+
+    void OnDisable()
+    {
+        RenderPipelineManager.beginCameraRendering -= OnBeginCameraRendering;
+        GaussianSplatRuntimeRegistry.Clear();
+    }
+
+    // The sorted render order lives in global material state, so it has to be rebuilt for
+    // whichever camera is about to be drawn rather than once per frame for Camera.main. The
+    // radix sort runs as immediate Graphics.Blit calls, so it completes before this camera's
+    // pass is submitted. In XR both eyes share one camera, hence one sort per head position.
+    void OnBeginCameraRendering(ScriptableRenderContext context, Camera camera)
+    {
+        if (camera == null || camera.cameraType != CameraType.Game)
         {
             return;
         }
-        Vector3 screenCamPos = VRCCameraSettings.ScreenCamera.Position;
-        Vector3 screenCamForward = VRCCameraSettings.ScreenCamera.Rotation * Vector3.forward;
-        VRCCameraSettings photoCam = VRCCameraSettings.PhotoCamera;
-        bool sortPhotoCamera = photoCam != null && photoCam.Active;
-        SortCameraViews(screenCamPos, screenCamForward, sortPhotoCamera ? photoCam.Position : screenCamPos, sortPhotoCamera, false, 0.0f, 0.0f);
-    }
-
-    public override void OnDeserialization()
-    {
+        DisableMsaaOnCamera(camera);
         if (!EnsureInitialized())
         {
             return;
         }
-        ApplyMaterialSettingsToSelectedObject();
+        Transform cameraTransform = camera.transform;
+        SortCameraViews(cameraTransform.position, cameraTransform.forward, false, camera.pixelHeight, camera.fieldOfView);
     }
 }
 

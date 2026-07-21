@@ -1,7 +1,6 @@
 #if UNITY_EDITOR
 using System.Collections.Generic;
 using GaussianSplatting;
-using UdonSharpEditor;
 using UnityEditor;
 using UnityEngine;
 
@@ -14,11 +13,6 @@ namespace GaussianSplatting.Editor
     {
         public override void OnInspectorGUI()
         {
-            if (UdonSharpGUI.DrawDefaultUdonSharpBehaviourHeader(target))
-            {
-                return;
-            }
-
             serializedObject.Update();
 
             EditorGUILayout.LabelField("Gallery", EditorStyles.boldLabel);

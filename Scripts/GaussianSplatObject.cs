@@ -1,14 +1,12 @@
 using UnityEngine;
-using UdonSharp;
 
-#if UNITY_EDITOR && !COMPILER_UDONSHARP
+#if UNITY_EDITOR
 using UnityEditor;
 #endif
 
 namespace GaussianSplatting
 {
-    [UdonBehaviourSyncMode(BehaviourSyncMode.None)]
-    public class GaussianSplatObject : UdonSharpBehaviour
+        public class GaussianSplatObject : MonoBehaviour
     {
         public const float MAX_LOD_ALPHA_LOG2 = 100.0f;
 
@@ -47,7 +45,7 @@ namespace GaussianSplatting
         [SerializeField, HideInInspector] public Texture2D chunkRangeTexture;
         [SerializeField, HideInInspector] public Vector4 chunkTextureLayout;
 
-#if UNITY_EDITOR && !COMPILER_UDONSHARP
+#if UNITY_EDITOR
         void Reset()
         {
             gaussianSplatRenderer = GaussianSplatRenderer.FindExistingSceneRenderer(gameObject.scene);
@@ -92,7 +90,7 @@ namespace GaussianSplatting
 
         GaussianSplatRenderer ResolveSceneRendererReference()
         {
-#if UNITY_EDITOR && !COMPILER_UDONSHARP
+#if UNITY_EDITOR
             if (gaussianSplatRenderer != null && gaussianSplatRenderer.gameObject != null && gaussianSplatRenderer.gameObject.scene == gameObject.scene)
             {
                 return gaussianSplatRenderer;
@@ -193,7 +191,7 @@ namespace GaussianSplatting
             return 0;
         }
 
-#if UNITY_EDITOR && !COMPILER_UDONSHARP
+#if UNITY_EDITOR
         public bool TryGetLocalBounds(out Bounds bounds)
         {
             Vector3 size = boundsMax - boundsMin;

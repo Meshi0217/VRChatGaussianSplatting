@@ -10,13 +10,9 @@ namespace GaussianSplatting.Editor
 {
     public class GaussianSplatBuildStripper : IProcessSceneWithReport
     {
-        // MUST run BEFORE UdonSharp's scene post-process (UdonSharpEditorManager.OnSceneBuild, a
-        // [PostProcessScene] callback at order 0). When building a player, UdonSharp copies each
-        // UdonSharpBehaviour proxy's fields into its backing UdonBehaviour and then DESTROYS the proxy
-        // components. If we ran after it (e.g. order 900) the GaussianSplat* proxies would already be gone
-        // (so we'd find no combiner/splats and strip nothing) AND the LOD source textures would already be
-        // serialized into the shipped backing data. Running first means we null the LOD proxy fields + swap
-        // the non-LOD materials, and UdonSharp's CopyProxyToUdon then bakes the stripped (null) values.
+        // Runs early so the LOD source textures are nulled before any other scene post-process serializes
+        // them into the shipped build. (The order originally dodged UdonSharp's order-0 scene bake; keeping
+        // it early stays correct for plain Unity builds.)
         public int callbackOrder => -100;
 
         public void OnProcessScene(Scene scene, BuildReport report)

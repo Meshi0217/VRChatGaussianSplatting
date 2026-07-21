@@ -1,4 +1,3 @@
-using UdonSharp;
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
@@ -7,10 +6,9 @@ namespace GaussianSplatting
 {
 
 // One auto-built row in the gallery list: a button bound to a fixed object index. The button's OnClick is
-// configured to SendCustomEvent("Select") on this behaviour (Udon has no Button.onClick.AddListener), which
-// routes the click back to the UI. This is internal UI plumbing, never wired by hand.
-[UdonBehaviourSyncMode(BehaviourSyncMode.None)]
-public class GalleryEntry : UdonSharpBehaviour
+// wired (as a persistent listener by the UI builder) to Select() on this behaviour, which routes the click
+// back to the UI. This is internal UI plumbing, never wired by hand.
+public class GalleryEntry : MonoBehaviour
 {
     public GaussianSplatRendererUI ui;
     public int index;

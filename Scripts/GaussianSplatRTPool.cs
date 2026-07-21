@@ -1,4 +1,4 @@
-#if UNITY_EDITOR && !COMPILER_UDONSHARP
+#if UNITY_EDITOR
 using UnityEditor;
 using UnityEngine;
 
@@ -20,7 +20,7 @@ namespace GaussianSplatting
         public struct BucketSet
         {
             public int capacity;
-            public RenderTexture keyValues0, keyValues1, histograms, prefixSums, splatRenderOrder, splatRenderOrderPhoto;
+            public RenderTexture keyValues0, keyValues1, histograms, prefixSums, splatRenderOrder;
             public RenderTexture combinedPositions, combinedRotations, combinedScales, combinedColors, combinedColorsCamera;
         }
 
@@ -63,7 +63,6 @@ namespace GaussianSplatting
                 histograms = LoadRT(folder, "Histograms"),
                 prefixSums = LoadRT(folder, "PrefixSums"),
                 splatRenderOrder = LoadRT(folder, "SplatRenderOrderScreen"),
-                splatRenderOrderPhoto = LoadRT(folder, "SplatRenderOrderPhoto"),
                 combinedPositions = LoadRT(folder, "CombinedPositions"),
                 combinedRotations = LoadRT(folder, "CombinedRotations"),
                 combinedScales = LoadRT(folder, "CombinedScales"),

@@ -1,10 +1,9 @@
-#if UNITY_EDITOR && !COMPILER_UDONSHARP
+#if UNITY_EDITOR
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEditor;
 using UnityEngine.Rendering;
 using UnityEngine.SceneManagement;
-using UdonSharpEditor;
 
 namespace GaussianSplatting
 {
@@ -452,7 +451,7 @@ public partial class GaussianSplatRenderer
                         continue;
                     }
                 }
-                renderer.SortCameraViews(cameraPosition, cameraForward, cameraPosition, false, true, camera.pixelHeight, camera.fieldOfView);
+                renderer.SortCameraViews(cameraPosition, cameraForward, true, camera.pixelHeight, camera.fieldOfView);
             }
         }
     }
@@ -488,8 +487,7 @@ public partial class GaussianSplatRenderer
     {
         for (int tier = 0; tier < COMBINED_BUCKET_TIER_COUNT; tier++)
         {
-            if (TryGetTierTexture(splatRenderOrderByBucket, tier, out RenderTexture order)
-                && TryGetTierTexture(splatRenderOrderPhotoByBucket, tier, out RenderTexture orderPhoto))
+            if (TryGetTierTexture(splatRenderOrderByBucket, tier, out RenderTexture order))
             {
                 return true;
             }
@@ -554,8 +552,8 @@ public partial class GaussianSplatRenderer
             {
                 SceneManager.MoveGameObjectToScene(rendererObject, scene);
             }
-            primaryRenderer = rendererObject.AddUdonSharpComponent<GaussianSplatRenderer>();
-            RadixSort radixSort = rendererObject.AddUdonSharpComponent<RadixSort>();
+            primaryRenderer = rendererObject.AddComponent<GaussianSplatRenderer>();
+            RadixSort radixSort = rendererObject.AddComponent<RadixSort>();
             radixSort.computeKeyValues = AssetDatabase.LoadAssetAtPath<Material>("Assets/VRChatGaussianSplatting/Resources/Materials/VRChatGaussianSplatting_ComputeKeyValue.mat");
             radixSort.radixSort = AssetDatabase.LoadAssetAtPath<Material>("Assets/VRChatGaussianSplatting/RadixSort/Materials/Misha_RadixSort.mat");
             radixSort.copySortedOrder = AssetDatabase.LoadAssetAtPath<Material>("Assets/VRChatGaussianSplatting/Resources/Materials/VRChatGaussianSplatting_CopyRenderOrder.mat");
@@ -614,7 +612,7 @@ public partial class GaussianSplatRenderer
             }
         }
         SortCameraViews(GetEditorCameraWorldPosition(camera), GetEditorCameraWorldForward(camera),
-            GetEditorCameraWorldPosition(camera), false, true, camera.pixelHeight, camera.fieldOfView);
+            true, camera.pixelHeight, camera.fieldOfView);
         return true;
     }
 
@@ -978,7 +976,6 @@ public partial class GaussianSplatRenderer
         int safeCombinedCount = maxReachableTotal;
         bool resourcesChanged = false;
         resourcesChanged |= EnsureBucketArray(ref splatRenderOrderByBucket);
-        resourcesChanged |= EnsureBucketArray(ref splatRenderOrderPhotoByBucket);
         resourcesChanged |= EnsureBucketArray(ref radixSort.keyValues0ByBucket);
         resourcesChanged |= EnsureBucketArray(ref radixSort.keyValues1ByBucket);
         resourcesChanged |= EnsureBucketArray(ref radixSort.histogramsByBucket);
@@ -991,7 +988,6 @@ public partial class GaussianSplatRenderer
             resourcesChanged |= AssignBucketTexture(ref radixSort.histogramsByBucket[b], set.histograms);
             resourcesChanged |= AssignBucketTexture(ref radixSort.prefixSumsByBucket[b], set.prefixSums);
             resourcesChanged |= AssignBucketTexture(ref splatRenderOrderByBucket[b], set.splatRenderOrder);
-            resourcesChanged |= AssignBucketTexture(ref splatRenderOrderPhotoByBucket[b], set.splatRenderOrderPhoto);
         }
         if (resourcesChanged)
         {

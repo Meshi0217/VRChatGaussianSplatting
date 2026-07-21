@@ -1,6 +1,5 @@
 #if UNITY_EDITOR
 using GaussianSplatting;
-using UdonSharpEditor;
 using UnityEditor;
 using UnityEngine;
 
@@ -43,8 +42,6 @@ namespace GaussianSplatting.Editor
         SerializedProperty _opacity;
         SerializedProperty _oklchShift;
         SerializedProperty _gamma;
-        SerializedProperty _useVrcLightVolumes;
-        SerializedProperty _lightVolumeIntensity;
 
         void OnEnable()
         {
@@ -77,14 +74,10 @@ namespace GaussianSplatting.Editor
             _opacity = serializedObject.FindProperty("opacity");
             _oklchShift = serializedObject.FindProperty("oklchShift");
             _gamma = serializedObject.FindProperty("gamma");
-            _useVrcLightVolumes = serializedObject.FindProperty("useVrcLightVolumes");
-            _lightVolumeIntensity = serializedObject.FindProperty("lightVolumeIntensity");
         }
 
         public override void OnInspectorGUI()
         {
-            DrawUdonSharpHeader();
-
             serializedObject.Update();
 
             DrawSettingsGroup(GSEditorText.T("Rendering Settings", "表示設定"), DrawRenderingSettings);
@@ -109,8 +102,6 @@ namespace GaussianSplatting.Editor
                 }
             }
 
-            EditorGUILayout.Space();
-            DrawUdonSharpUtilities();
         }
 
         void DrawRenderingSettings()
@@ -287,11 +278,6 @@ namespace GaussianSplatting.Editor
                 }
                 DrawFusedObjectTable(shCombiner);
             }
-            EditorGUILayout.PropertyField(_useVrcLightVolumes, GSEditorText.C("Use VRC Light Volumes", "VRC Light Volumes を使用"));
-            using (new EditorGUI.DisabledScope(!_useVrcLightVolumes.boolValue))
-            {
-                EditorGUILayout.Slider(_lightVolumeIntensity, 0.0f, 10.0f, GSEditorText.C("Light Volume Intensity", "ライトボリューム強度"));
-            }
 
             EditorGUILayout.Space();
             DrawQualityPresetButtons();
@@ -426,29 +412,6 @@ namespace GaussianSplatting.Editor
             }
         }
 
-        void DrawUdonSharpHeader()
-        {
-            if (targets != null && targets.Length > 1)
-            {
-                UdonSharpGUI.DrawDefaultUdonSharpBehaviourHeader(targets);
-            }
-            else
-            {
-                UdonSharpGUI.DrawDefaultUdonSharpBehaviourHeader(target);
-            }
-        }
-
-        void DrawUdonSharpUtilities()
-        {
-            if (targets != null && targets.Length > 1)
-            {
-                UdonSharpGUI.DrawUtilities(targets);
-            }
-            else
-            {
-                UdonSharpGUI.DrawUtilities(target);
-            }
-        }
     }
 }
 #endif

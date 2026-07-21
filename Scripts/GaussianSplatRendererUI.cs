@@ -1,21 +1,16 @@
-using UdonSharp;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
-using VRC.SDKBase;
 
-#if UNITY_EDITOR && !COMPILER_UDONSHARP
+#if UNITY_EDITOR
 using UnityEditor;
 using UnityEditor.Events;
-using UdonSharpEditor;
 #endif
 
 namespace GaussianSplatting
 {
 
-// Manual sync carries only the gallery selection (the [UdonSynced] fields below); all other UI state is local.
-[UdonBehaviourSyncMode(BehaviourSyncMode.Manual)]
-public class GaussianSplatRendererUI : UdonSharpBehaviour
+public class GaussianSplatRendererUI : MonoBehaviour
 {
     const int LanguageEnglish = 0;
     const int LanguageJapanese = 1;
@@ -23,7 +18,6 @@ public class GaussianSplatRendererUI : UdonSharpBehaviour
     const float MinPositiveLodSplatCap = 10000.0f;
     const int SliderShBand = 0;
     const int SliderAntiAliasing = 1;
-    const int SliderLightVolumeIntensity = 2;
     const int SliderAlphaCutoff = 3;
     const int SliderAlphaCull = 4;
     const int SliderLODSplatCap = 5;
@@ -56,22 +50,22 @@ public class GaussianSplatRendererUI : UdonSharpBehaviour
     [Header("UI References")]
     public TextMeshProUGUI subtitleText, customSubtitleText;
     public TextMeshProUGUI currentSplatText, sortingSectionText, cameraQuantizationLabelText, cameraQuantizationText;
-    public TextMeshProUGUI materialSectionText, shBandLabelText, shBandText, vrcLightVolumesLabelText, antiAliasingLabelText, antiAliasingText;
-    public TextMeshProUGUI lightVolumeIntensityLabelText, lightVolumeIntensityText, gaussianScaleLabelText, gaussianScaleText, alphaCutoffLabelText, alphaCutoffText;
+    public TextMeshProUGUI materialSectionText, shBandLabelText, shBandText, antiAliasingLabelText, antiAliasingText;
+    public TextMeshProUGUI gaussianScaleLabelText, gaussianScaleText, alphaCutoffLabelText, alphaCutoffText;
     public TextMeshProUGUI alphaCullLabelText, alphaCullText;
     public TextMeshProUGUI lodCullLabelText, lodCullText, qualitySectionText;
     public TextMeshProUGUI languageSectionText;
-    public Button vrcLightVolumesButton, englishLanguageButton, japaneseLanguageButton;
+    public Button englishLanguageButton, japaneseLanguageButton;
     public Button qualityVeryLowButton, qualityLowButton, qualityMediumButton, qualityHighButton, advancedSettingsButton;
-    public Slider shBandSlider, antiAliasingSlider, lightVolumeIntensitySlider, alphaCutoffSlider;
+    public Slider shBandSlider, antiAliasingSlider, alphaCutoffSlider;
     public Slider alphaCullSlider, lodCullSlider;
     [Header("Gallery")]
     [Tooltip("Splat objects in the gallery, added manually. When 1+ are listed, gallery mode is active and only the selected one renders. Objects NOT in this list are never touched.")]
     [SerializeField] public GaussianSplatObject[] galleryObjects = new GaussianSplatObject[0];
     [Tooltip("Inspector-only switch. If off, the gallery list is kept but gallery UI/selection enforcement are disabled and listed splats are not touched.")]
     [SerializeField] public bool galleryEnabled = true;
-    [Tooltip("If on, only the instance master can change the gallery selection. Synced so the master can toggle it at runtime from the in-panel button.")]
-    [SerializeField, UdonSynced] public bool galleryMasterLock = true;
+    [Tooltip("If on, only the instance master can change the gallery selection. In the single-user port the local user is always the master, so this only drives the toggle UI.")]
+    [SerializeField] public bool galleryMasterLock = true;
     public GameObject gallerySection;
     public TextMeshProUGUI galleryHeaderText;
     public GameObject galleryListRoot;
@@ -80,8 +74,8 @@ public class GaussianSplatRendererUI : UdonSharpBehaviour
     public TextMeshProUGUI galleryMasterNameLabel;  // current master's name, shown above the toggle
     public TextMeshProUGUI galleryMasterLockTitle;  // "Master lock:" label left of the toggle
     public TextMeshProUGUI galleryMasterLockLabel;  // toggle button text ("ON"/"OFF")
-    [SerializeField, UdonSynced] int _gallerySelectedIndex;
-    string _galleryMasterName = "";                 // cached so RefreshUI doesn't scan players every frame
+    [SerializeField] int _gallerySelectedIndex;
+    string _galleryMasterName = "";                 // single-user: no instance master, so this stays empty
 
     [Header("Social Links")]
     public GameObject socialPanel;                  // QR + URL container, toggled by the icon buttons
@@ -145,7 +139,6 @@ public class GaussianSplatRendererUI : UdonSharpBehaviour
     bool _layoutDefaultsInitialized;
     float _lastShBandSliderValue;
     float _lastAntiAliasingSliderValue;
-    float _lastLightVolumeIntensitySliderValue;
     float _lastAlphaCutoffSliderValue;
     float _lastAlphaCullSliderValue;
     float _lastLODSplatCapSliderValue;
@@ -163,31 +156,17 @@ public class GaussianSplatRendererUI : UdonSharpBehaviour
         RefreshUI();
     }
 
-    // The instance master can migrate when players join/leave, so refresh the cached name on those events
-    // rather than scanning the player list every frame.
-    public override void OnPlayerJoined(VRCPlayerApi player) { UpdateGalleryMasterName(); }
-    public override void OnPlayerLeft(VRCPlayerApi player) { UpdateGalleryMasterName(); }
-
     void UpdateGalleryMasterName()
     {
-        int count = VRCPlayerApi.GetPlayerCount();
-        if (count <= 0) { _galleryMasterName = ""; return; }
-        VRCPlayerApi[] players = new VRCPlayerApi[count];
-        VRCPlayerApi.GetPlayers(players);
-        for (int i = 0; i < players.Length; i++)
-        {
-            if (players[i] != null && players[i].isMaster) { _galleryMasterName = players[i].displayName; return; }
-        }
+        // Single-user port: there is no instance master to display.
         _galleryMasterName = "";
     }
 
-    // Master-only toggle of the selection lock, wired to the in-panel button's onClick.
+    // Toggle of the selection lock, wired to the in-panel button's onClick. The local user is always
+    // the master in the single-user port, so the toggle is never blocked.
     public void ToggleGalleryMasterLock()
     {
-        if (Networking.LocalPlayer == null || !Networking.LocalPlayer.isMaster) return;
-        GalleryTakeOwnership();
         galleryMasterLock = !galleryMasterLock;
-        RequestSerialization();
         RefreshUI();
     }
 
@@ -197,13 +176,7 @@ public class GaussianSplatRendererUI : UdonSharpBehaviour
         RefreshUI();
     }
 
-    public override void OnDeserialization()
-    {
-        ApplyGalleryVisibility();
-        RefreshUI();
-    }
-
-#if UNITY_EDITOR && !COMPILER_UDONSHARP
+#if UNITY_EDITOR
     static bool _editorRefreshRequested = true;
 
     [InitializeOnLoadMethod]
@@ -550,7 +523,6 @@ public class GaussianSplatRendererUI : UdonSharpBehaviour
         {
             galleryEntries[i] = CreateGalleryEntry(content, i);
         }
-        UdonSharpEditorUtility.CopyProxyToUdon(this);
         EditorUtility.SetDirty(this);
     }
 
@@ -617,7 +589,7 @@ public class GaussianSplatRendererUI : UdonSharpBehaviour
         lblRect.anchorMin = Vector2.zero; lblRect.anchorMax = Vector2.one; lblRect.offsetMin = Vector2.zero; lblRect.offsetMax = Vector2.zero;
 
         galleryMasterLockButton = button;
-        WireUdonClick(button, UdonSharpEditorUtility.GetBackingUdonBehaviour(this), "ToggleGalleryMasterLock");
+        WireClick(button, this, nameof(ToggleGalleryMasterLock));
     }
 
     GameObject CreateScrollList(Transform parent, out Transform content)
@@ -744,10 +716,10 @@ public class GaussianSplatRendererUI : UdonSharpBehaviour
         // Multiline: wrap and grow the row (the row has a ContentSizeFitter) instead of truncating.
         descriptionText.overflowMode = TextOverflowModes.Overflow;
 
-        GalleryEntry entry = UdonSharpUndo.AddComponent<GalleryEntry>(entryGo);
+        GalleryEntry entry = Undo.AddComponent<GalleryEntry>(entryGo);
         entry.ui = this; entry.index = index; entry.button = button; entry.background = background; entry.nameText = nameText; entry.countText = countText; entry.descriptionText = descriptionText;
-        UdonSharpEditorUtility.CopyProxyToUdon(entry);
-        WireUdonClick(button, UdonSharpEditorUtility.GetBackingUdonBehaviour(entry), "Select");
+        EditorUtility.SetDirty(entry);
+        WireClick(button, entry, nameof(GalleryEntry.Select));
 
         entryGo.SetActive(false);
         return entry;
@@ -811,19 +783,25 @@ public class GaussianSplatRendererUI : UdonSharpBehaviour
         return false;
     }
 
-    static void WireUdonClick(Button button, VRC.Udon.UdonBehaviour backing, string eventName)
+    static void WireClick(Button button, MonoBehaviour target, string methodName)
     {
-        if (button == null || backing == null)
+        if (button == null || target == null)
         {
             return;
         }
-        UnityEventTools.AddStringPersistentListener(button.onClick, backing.SendCustomEvent, eventName);
+        System.Reflection.MethodInfo method = target.GetType().GetMethod(methodName);
+        if (method == null)
+        {
+            return;
+        }
+        UnityEngine.Events.UnityAction action = (UnityEngine.Events.UnityAction)System.Delegate.CreateDelegate(typeof(UnityEngine.Events.UnityAction), target, method);
+        UnityEventTools.AddVoidPersistentListener(button.onClick, action);
     }
 #endif
 
     bool SkipRuntimeRefresh()
     {
-#if UNITY_EDITOR && !COMPILER_UDONSHARP
+#if UNITY_EDITOR
         return !Application.isPlaying;
 #else
         return false;
@@ -986,8 +964,6 @@ public class GaussianSplatRendererUI : UdonSharpBehaviour
         SetLocalizedText(cameraQuantizationLabelText, "Camera move amount to trigger resort", "再ソートするカメラ移動量");
         SetLocalizedText(materialSectionText, "Material Settings", "マテリアル設定");
         SetLocalizedText(shBandLabelText, "SH Band", "SH バンド");
-        SetLocalizedText(vrcLightVolumesLabelText, "VRC Light Volumes", "VRC Light Volumes");
-        SetLocalizedText(lightVolumeIntensityLabelText, "Light Volume Intensity", "ライトボリューム強度");
         SetLocalizedText(antiAliasingLabelText, "Antialiasing", "アンチエイリアス");
         SetLocalizedText(gaussianScaleLabelText, "Gaussian Scale", "ガウススケール");
         SetLocalizedText(alphaCutoffLabelText, "Alpha Cutoff\n(lower = better quality)", "アルファカットオフ\n(低いほど高品質)");
@@ -1020,8 +996,6 @@ public class GaussianSplatRendererUI : UdonSharpBehaviour
     {
         SetActive(materialSectionText, visible);
         SetParentActive(shBandLabelText, visible);
-        SetParentActive(vrcLightVolumesLabelText, visible);
-        SetParentActive(lightVolumeIntensityLabelText, visible);
         SetParentActive(antiAliasingLabelText, visible);
         SetParentActive(gaussianScaleLabelText, visible);
         SetParentActive(alphaCutoffLabelText, visible);
@@ -1038,7 +1012,7 @@ public class GaussianSplatRendererUI : UdonSharpBehaviour
     void FindRenderer()
     {
         if (gaussianSplatRenderer != null) return;
-#if UNITY_EDITOR && !COMPILER_UDONSHARP
+#if UNITY_EDITOR
         gaussianSplatRenderer = GaussianSplatRenderer.FindExistingSceneRenderer(gameObject.scene);
 #else
         GameObject rendererObject = GameObject.Find("GaussianSplatRenderer");
@@ -1157,20 +1131,13 @@ public class GaussianSplatRendererUI : UdonSharpBehaviour
             return;
         }
 
-#if UNITY_EDITOR && !COMPILER_UDONSHARP
+#if UNITY_EDITOR
         bool allowWriteBack = EditorApplication.isPlaying;
 #else
         bool allowWriteBack = true;
 #endif
-        if (vrcLightVolumesButton != null)
-        {
-            bool enabled = gaussianSplatRenderer.GetUseVrcLightVolumes();
-            SetInteractable(vrcLightVolumesButton, true);
-            ApplyButtonVisual(vrcLightVolumesButton, ToggleLabel(enabled), enabled ? _toggleEnabledColor : _toggleDisabledColor);
-        }
         SyncSlider(shBandSlider, shBandText, SliderShBand, SliderCanWriteBack(SliderShBand, allowWriteBack));
         SyncSlider(antiAliasingSlider, antiAliasingText, SliderAntiAliasing, allowWriteBack);
-        SyncSlider(lightVolumeIntensitySlider, lightVolumeIntensityText, SliderLightVolumeIntensity, allowWriteBack);
         SyncSlider(alphaCutoffSlider, alphaCutoffText, SliderAlphaCutoff, allowWriteBack);
         SyncSlider(alphaCullSlider, alphaCullText, SliderAlphaCull, allowWriteBack);
         bool showLODControls = ShouldShowLODControls();
@@ -1207,7 +1174,6 @@ public class GaussianSplatRendererUI : UdonSharpBehaviour
         {
             case SliderShBand: return gaussianSplatRenderer.GetCurrentSHBand();
             case SliderAntiAliasing: return gaussianSplatRenderer.GetAntiAliasing();
-            case SliderLightVolumeIntensity: return gaussianSplatRenderer.GetLightVolumeIntensity();
             case SliderAlphaCull: return gaussianSplatRenderer.GetAlphaCull();
             case SliderLODSplatCap: return gaussianSplatRenderer.GetEffectiveCombinedLodSplatBudget();
             default: return gaussianSplatRenderer.alphaCutoff;
@@ -1220,7 +1186,6 @@ public class GaussianSplatRendererUI : UdonSharpBehaviour
         {
             case SliderShBand: return _lastShBandSliderValue;
             case SliderAntiAliasing: return _lastAntiAliasingSliderValue;
-            case SliderLightVolumeIntensity: return _lastLightVolumeIntensitySliderValue;
             case SliderAlphaCull: return _lastAlphaCullSliderValue;
             case SliderLODSplatCap: return _lastLODSplatCapSliderValue;
             default: return _lastAlphaCutoffSliderValue;
@@ -1236,9 +1201,6 @@ public class GaussianSplatRendererUI : UdonSharpBehaviour
                 return;
             case SliderAntiAliasing:
                 _lastAntiAliasingSliderValue = value;
-                return;
-            case SliderLightVolumeIntensity:
-                _lastLightVolumeIntensitySliderValue = value;
                 return;
             case SliderAlphaCull:
                 _lastAlphaCullSliderValue = value;
@@ -1261,9 +1223,6 @@ public class GaussianSplatRendererUI : UdonSharpBehaviour
                 return;
             case SliderAntiAliasing:
                 gaussianSplatRenderer.SetAntiAliasing(value);
-                return;
-            case SliderLightVolumeIntensity:
-                gaussianSplatRenderer.SetLightVolumeIntensity(value);
                 return;
             case SliderAlphaCull:
                 gaussianSplatRenderer.SetAlphaCull(value);
@@ -1457,7 +1416,7 @@ public class GaussianSplatRendererUI : UdonSharpBehaviour
             {
                 continue;
             }
-#if UNITY_EDITOR && !COMPILER_UDONSHARP
+#if UNITY_EDITOR
             ApplyGalleryEntryEditorLayout(entry);
 #endif
             bool used = i < count && galleryObjects[i] != null;
@@ -1505,8 +1464,7 @@ public class GaussianSplatRendererUI : UdonSharpBehaviour
 
     void RefreshGalleryMasterLock()
     {
-        bool isMaster = Networking.LocalPlayer != null && Networking.LocalPlayer.isMaster;
-        SetInteractable(galleryMasterLockButton, isMaster); // only the master can toggle the lock
+        SetInteractable(galleryMasterLockButton, true); // single-user: the local user is always the master
         SetText(galleryMasterNameLabel, _galleryMasterName);
         SetText(galleryMasterLockTitle, Localize("Master lock:", "マスターロック:"));
         SetText(galleryMasterLockLabel, galleryMasterLock ? "ON" : "OFF");
@@ -1530,9 +1488,9 @@ public class GaussianSplatRendererUI : UdonSharpBehaviour
         return galleryMasterLock ? _toggleEnabledColor : new Color(0.28f, 0.30f, 0.34f, 1.0f);
     }
 
-    // Master lock is optional (galleryMasterLock): when on, only the instance master may change the selection.
-    bool GalleryCanModify() { return !galleryMasterLock || Networking.LocalPlayer == null || Networking.LocalPlayer.isMaster; }
-    void GalleryTakeOwnership() { if (Networking.LocalPlayer != null && !Networking.IsOwner(gameObject)) Networking.SetOwner(Networking.LocalPlayer, gameObject); }
+    // Master lock is optional (galleryMasterLock): the single-user port has no other players, so the
+    // local user always counts as the master and the selection is never blocked.
+    bool GalleryCanModify() { return true; }
 
     string GalleryObjectName(int index)
     {
@@ -1602,10 +1560,8 @@ public class GaussianSplatRendererUI : UdonSharpBehaviour
     {
         if (!GalleryCanModify()) return;
         if (galleryObjects == null || index < 0 || index >= galleryObjects.Length) return;
-        GalleryTakeOwnership();
         _gallerySelectedIndex = index;
         ApplyGalleryVisibility();
-        RequestSerialization();
         RefreshUI();
     }
 
@@ -1642,8 +1598,6 @@ public class GaussianSplatRendererUI : UdonSharpBehaviour
 
     public void IncreaseCameraQuantization() { StepCameraQuantization(cameraQuantizationStep); }
     public void DecreaseCameraQuantization() { StepCameraQuantization(-cameraQuantizationStep); }
-
-    public void ToggleVrcLightVolumes() { if (gaussianSplatRenderer == null) return; gaussianSplatRenderer.ToggleVrcLightVolumes(); RefreshUI(); }
 
     public void IncreaseGaussianScale() { StepGaussianScale(gaussianScaleStep); }
     public void DecreaseGaussianScale() { StepGaussianScale(-gaussianScaleStep); }
