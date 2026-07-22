@@ -664,9 +664,6 @@ public partial class GaussianSplatRenderer
         {
             SetSortCameraPos(cameraPosition);
             _radixSort.RunFullSortForEditor(splatRenderOrder, SCREEN_CAMERA_ID);
-            _completedCameraPos[SCREEN_CAMERA_ID] = QuantizePosition(cameraPosition);
-            _completedCameraWorldPos[SCREEN_CAMERA_ID] = cameraPosition;
-            _hasCompletedSort[SCREEN_CAMERA_ID] = true;
             OnScreenSortPublished();
             return true;
         }
@@ -816,7 +813,6 @@ public partial class GaussianSplatRenderer
         combinedLodTargetScale = combinedLodTargetScale > 0.0f ? Mathf.Clamp(combinedLodTargetScale, 0.1f, 1.0f) : DEFAULT_COMBINED_LOD_TARGET_SCALE;
         combinedLodDirectionalBias = combinedLodDirectionalBias > 0.0f ? Mathf.Clamp(combinedLodDirectionalBias, 1.0f, 16.0f) : DEFAULT_COMBINED_LOD_DIRECTIONAL_BIAS;
         requestedSHBand = Mathf.Clamp(requestedSHBand, 0, 3);
-        ResetCameraPositions();
         SceneView.RepaintAll();
         QueueEditorRefresh();
     }

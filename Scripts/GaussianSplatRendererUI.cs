@@ -50,7 +50,7 @@ public class GaussianSplatRendererUI : MonoBehaviour
     [TextArea(1, 3)] public string customSubtitleJapanese;
     [Header("UI References")]
     public TextMeshProUGUI subtitleText, customSubtitleText;
-    public TextMeshProUGUI currentSplatText, sortingSectionText, cameraQuantizationLabelText, cameraQuantizationText;
+    public TextMeshProUGUI currentSplatText, sortingSectionText;
     public TextMeshProUGUI materialSectionText, shBandLabelText, shBandText, vrcLightVolumesLabelText, antiAliasingLabelText, antiAliasingText;
     public TextMeshProUGUI lightVolumeIntensityLabelText, lightVolumeIntensityText, gaussianScaleLabelText, gaussianScaleText, alphaCutoffLabelText, alphaCutoffText;
     public TextMeshProUGUI alphaCullLabelText, alphaCullText;
@@ -121,7 +121,6 @@ public class GaussianSplatRendererUI : MonoBehaviour
     }
 
     [SerializeField] float gaussianScaleStep = 0.1f;
-    [SerializeField] float cameraQuantizationStep = 0.05f;
     [SerializeField] int selectedLanguage = LanguageEnglish;
     [SerializeField] bool showAdvancedSettings;
 
@@ -963,7 +962,6 @@ public class GaussianSplatRendererUI : MonoBehaviour
         SetText(customSubtitle, customSubtitleValue);
         SetActive(customSubtitle, !string.IsNullOrEmpty(customSubtitleValue));
         SetLocalizedText(sortingSectionText, "Sorting Settings", "ソート設定");
-        SetLocalizedText(cameraQuantizationLabelText, "Camera move amount to trigger resort", "再ソートするカメラ移動量");
         SetLocalizedText(materialSectionText, "Material Settings", "マテリアル設定");
         SetLocalizedText(shBandLabelText, "SH Band", "SH バンド");
         SetLocalizedText(vrcLightVolumesLabelText, "Light Volumes", "Light Volumes");
@@ -1012,7 +1010,6 @@ public class GaussianSplatRendererUI : MonoBehaviour
     void RefreshSortingVisibility()
     {
         SetActive(sortingSectionText, false);
-        SetParentActive(cameraQuantizationLabelText, false);
     }
 
     void FindRenderer()
@@ -1345,16 +1342,6 @@ public class GaussianSplatRendererUI : MonoBehaviour
         return FormatFloat(currentValue);
     }
 
-    void StepCameraQuantization(float delta)
-    {
-        if (gaussianSplatRenderer == null)
-        {
-            return;
-        }
-        gaussianSplatRenderer.SetCameraPositionQuantization(gaussianSplatRenderer.GetCameraPositionQuantization() + delta);
-        RefreshUI();
-    }
-
     void StepGaussianScale(float delta)
     {
         if (gaussianSplatRenderer == null)
@@ -1616,9 +1603,6 @@ public class GaussianSplatRendererUI : MonoBehaviour
             }
         }
     }
-
-    public void IncreaseCameraQuantization() { StepCameraQuantization(cameraQuantizationStep); }
-    public void DecreaseCameraQuantization() { StepCameraQuantization(-cameraQuantizationStep); }
 
     public void ToggleVrcLightVolumes() { if (gaussianSplatRenderer == null) return; gaussianSplatRenderer.ToggleVrcLightVolumes(); RefreshUI(); }
 

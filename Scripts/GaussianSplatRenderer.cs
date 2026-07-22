@@ -6,7 +6,6 @@ namespace GaussianSplatting
 
 public partial class GaussianSplatRenderer : MonoBehaviour
 {
-    const int MAX_CAMERA_COUNT = 1;
     // Number of pre-baked combined-resource sets the renderer can switch between at runtime by LOD budget,
     // without reallocating. VRAM COST: each tier holds its own combined position/rotation/scale/color/
     // colorsCamera textures + radix sort buffers + render-order RTs, so total VRAM is roughly the sum over
@@ -27,9 +26,6 @@ public partial class GaussianSplatRenderer : MonoBehaviour
     const float LOD_DENSITY_ALPHA_NUMERATOR = 4.0f * 1024.0f * 12.0f;
     const int STARTUP_RENDER_SUPPRESSION_FRAMES = 8;
 
-    [System.NonSerialized] Vector3[] _completedCameraPos;
-    [System.NonSerialized] Vector3[] _completedCameraWorldPos;
-    [System.NonSerialized] bool[] _hasCompletedSort;
     [System.NonSerialized] RadixSort _radixSort;
     [System.NonSerialized] Material keyValueMat;
     [System.NonSerialized] MeshRenderer _sortedRenderer;
@@ -106,9 +102,6 @@ public partial class GaussianSplatRenderer : MonoBehaviour
     [SerializeField] bool generateControlUi = true;
     public bool GenerateControlUi { get { return generateControlUi; } }
 
-    [Header("Render Settings")]
-    [Tooltip("Quantization of camera position to avoid unnecessary updates and jitter. Set to 0 to disable. Default is 10 cm.")]
-    [SerializeField] float cameraPositionQuantization = 0.1f;
     // Per-frame render-order holder is rebound from the serialized bucket arrays; never serialize it.
     [System.NonSerialized] public RenderTexture splatRenderOrder;
     [HideInInspector, SerializeField] RenderTexture[] splatRenderOrderByBucket;
@@ -137,20 +130,6 @@ public partial class GaussianSplatRenderer : MonoBehaviour
 #if UNITY_EDITOR
     static bool _editorRefreshQueued = true;
 #endif
-
-    void ResetCameraPositions()
-    {
-        if (_completedCameraPos == null || _completedCameraPos.Length < MAX_CAMERA_COUNT)
-        {
-            return;
-        }
-        for (int i = 0; i < MAX_CAMERA_COUNT; i++)
-        {
-            _completedCameraPos[i] = Vector3.positiveInfinity;
-            _completedCameraWorldPos[i] = Vector3.positiveInfinity;
-            _hasCompletedSort[i] = false;
-        }
-    }
 
     void RestartStartupRenderSuppressionWindow()
     {
@@ -188,7 +167,6 @@ public partial class GaussianSplatRenderer : MonoBehaviour
 
     void InvalidateCombinedSort()
     {
-        ResetCameraPositions();
 #if UNITY_EDITOR
         if (!Application.isPlaying)
         {
@@ -203,7 +181,6 @@ public partial class GaussianSplatRenderer : MonoBehaviour
         _runtimeCacheValid = false;
         _sceneLods = new GaussianSplatObject[0];
         _sortedRenderer = null;
-        ResetCameraPositions();
         RestartStartupRenderSuppressionWindow();
     }
 
@@ -471,7 +448,6 @@ public partial class GaussianSplatRenderer : MonoBehaviour
         if (_activeCombinedBucketTier != tier)
         {
             _activeCombinedBucketTier = tier;
-            ResetCameraPositions();
             RestartStartupRenderSuppressionWindow();
         }
     }
@@ -617,7 +593,6 @@ public partial class GaussianSplatRenderer : MonoBehaviour
         {
             requestedCombinedLodSplatBudget = ClampCombinedLodSplatBudgetToSliderRange(requestedCombinedLodSplatBudget);
         }
-        ResetCameraPositions();
     }
 
     public void SetCombinedLodSplatBudgetAndroid(int value)
@@ -632,7 +607,6 @@ public partial class GaussianSplatRenderer : MonoBehaviour
         {
             requestedCombinedLodSplatBudget = ClampCombinedLodSplatBudgetToSliderRange(requestedCombinedLodSplatBudget);
         }
-        ResetCameraPositions();
     }
 
     public void SetEffectiveCombinedLodSplatBudget(int value)
@@ -643,7 +617,6 @@ public partial class GaussianSplatRenderer : MonoBehaviour
             return;
         }
         requestedCombinedLodSplatBudget = clampedValue;
-        ResetCameraPositions();
     }
 
     public float GetEffectiveCombinedLodTargetScale()
@@ -729,8 +702,6 @@ public partial class GaussianSplatRenderer : MonoBehaviour
         InvalidateCombinedSort();
         ApplyMaterialSettingsToSelectedObject();
     }
-    public float GetCameraPositionQuantization() { return cameraPositionQuantization; }
-    public void SetCameraPositionQuantization(float value) { cameraPositionQuantization = Mathf.Max(0.0f, value); ResetCameraPositions(); }
     public bool GetUseVrcLightVolumes() { return useVrcLightVolumes; }
     public void SetUseVrcLightVolumes(bool value) { useVrcLightVolumes = value; ApplyMaterialSettingsToSelectedObject(); }
     public void ToggleVrcLightVolumes() { SetUseVrcLightVolumes(!useVrcLightVolumes); }
@@ -768,7 +739,6 @@ public partial class GaussianSplatRenderer : MonoBehaviour
         alphaCull = cull;
         alphaCutoff = cutoff;
         requestedCombinedLodSplatBudget = GetCombinedLodSplatBudgetAtQuality(lodQuality);
-        ResetCameraPositions();
         ApplyMaterialSettingsToSelectedObject();
     }
 
@@ -789,7 +759,6 @@ public partial class GaussianSplatRenderer : MonoBehaviour
         else
         {
             requestedCombinedLodSplatBudget = GetCombinedLodSplatBudgetAtQuality(startupLodCapacity);
-            ResetCameraPositions();
         }
     }
 
@@ -855,7 +824,6 @@ public partial class GaussianSplatRenderer : MonoBehaviour
             return;
         }
         RegisterRuntimeLODObject(lodObject);
-        ResetCameraPositions();
         UpdateSourceVisibility();
     }
 
@@ -865,7 +833,6 @@ public partial class GaussianSplatRenderer : MonoBehaviour
         {
             return;
         }
-        ResetCameraPositions();
         UpdateSourceVisibility();
     }
 
@@ -985,13 +952,6 @@ public partial class GaussianSplatRenderer : MonoBehaviour
             Debug.LogError("Gaussian splat render textures could not be created at runtime.");
             return false;
         }
-        if (_completedCameraPos == null || _completedCameraPos.Length < MAX_CAMERA_COUNT || _completedCameraWorldPos == null || _completedCameraWorldPos.Length < MAX_CAMERA_COUNT)
-        {
-            _completedCameraPos = new Vector3[MAX_CAMERA_COUNT];
-            _completedCameraWorldPos = new Vector3[MAX_CAMERA_COUNT];
-            _hasCompletedSort = new bool[MAX_CAMERA_COUNT];
-            ResetCameraPositions();
-        }
         if (!_runtimeCacheValid)
         {
             RefreshRuntimeCache();
@@ -999,18 +959,6 @@ public partial class GaussianSplatRenderer : MonoBehaviour
             ApplyMaterialSettingsToSelectedObject();
         }
         return true;
-    }
-
-    Vector3 QuantizePosition(Vector3 position)
-    {
-        if (cameraPositionQuantization <= 0.0f)
-        {
-            return position;
-        }
-        return new Vector3(
-            Mathf.Round(position.x / cameraPositionQuantization) * cameraPositionQuantization,
-            Mathf.Round(position.y / cameraPositionQuantization) * cameraPositionQuantization,
-            Mathf.Round(position.z / cameraPositionQuantization) * cameraPositionQuantization);
     }
 
     bool BindKeyValuePositions(Material sourceMaterial, Texture positions, int actualCount)
@@ -1155,9 +1103,6 @@ public partial class GaussianSplatRenderer : MonoBehaviour
         {
             _radixSort.RunFullSort(splatRenderOrder, SCREEN_CAMERA_ID);
         }
-        _completedCameraPos[SCREEN_CAMERA_ID] = QuantizePosition(screenCamPos);
-        _completedCameraWorldPos[SCREEN_CAMERA_ID] = screenCamPos;
-        _hasCompletedSort[SCREEN_CAMERA_ID] = true;
         OnScreenSortPublished();
     }
 

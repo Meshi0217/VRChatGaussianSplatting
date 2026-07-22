@@ -12,7 +12,6 @@ namespace GaussianSplatting.Editor
         const long VRC_WORLD_SIZE_WARNING_BYTES = 1200L * 1024L * 1024L;
         const float SPLAT_DATA_DOWNLOAD_COMPRESSION_ESTIMATE = 0.85f;
 
-        SerializedProperty _cameraPositionQuantization;
         SerializedProperty _combinedLodSplatBudgetPC;
         SerializedProperty _combinedLodSplatBudgetAndroid;
         SerializedProperty _combinedLodTargetScale;
@@ -47,7 +46,6 @@ namespace GaussianSplatting.Editor
 
         void OnEnable()
         {
-            _cameraPositionQuantization = serializedObject.FindProperty("cameraPositionQuantization");
             _combinedLodSplatBudgetPC = serializedObject.FindProperty("combinedLodSplatBudgetPC");
             _combinedLodSplatBudgetAndroid = serializedObject.FindProperty("combinedLodSplatBudgetAndroid");
             _combinedLodTargetScale = serializedObject.FindProperty("combinedLodTargetScale");
@@ -85,8 +83,6 @@ namespace GaussianSplatting.Editor
             serializedObject.Update();
 
             DrawSettingsGroup(GSEditorText.T("Rendering Settings", "表示設定"), DrawRenderingSettings);
-            EditorGUILayout.Space();
-            DrawSettingsGroup(GSEditorText.T("Sorting Settings", "ソート設定"), DrawSortingSettings);
             EditorGUILayout.Space();
             DrawSettingsGroup(GSEditorText.T("Material Settings", "マテリアル設定"), DrawMaterialSettings);
 
@@ -259,11 +255,6 @@ namespace GaussianSplatting.Editor
                 }
             }
             return count;
-        }
-
-        void DrawSortingSettings()
-        {
-            EditorGUILayout.PropertyField(_cameraPositionQuantization, GSEditorText.C("Camera Position Quantization", "カメラ位置量子化"));
         }
 
         void DrawMaterialSettings()
