@@ -11,6 +11,7 @@
 #endif
 #pragma shader_feature_local _PRECOMPUTED_SORTING_ON
 #pragma shader_feature_local _GS_PACKED_POSITIONS
+#pragma multi_compile_local __ _VRC_LIGHT_VOLUMES_ON
 #pragma multi_compile_instancing
 #pragma vertex vert
 #pragma fragment frag
@@ -24,6 +25,13 @@
 #include "UnityCG.cginc"
 #include "GSData.cginc"
 #include "GSMath.cginc"
+
+#ifdef _VRC_LIGHT_VOLUMES_ON
+// Ported REDSIM Light Volumes package (LightVolumes/); the ambient volume globals are bound by
+// its LightVolumeManager MonoBehaviour instead of a VRChat Udon script.
+#include "../LightVolumes/Shaders/LightVolumes.cginc"
+float _LightVolumeIntensity;
+#endif
 
 #ifdef GS_COLLIDER_DEPTH_WEIGHT
 float4x4 _GS_ColliderWorldToBox;
@@ -363,6 +371,16 @@ void geo(point v2g input[1], inout TriangleStream<g2f> triStream, uint instanceI
         o.color.rgb = GammaToLinearSpace(o.color.rgb);
     #endif
 
+#ifdef _VRC_LIGHT_VOLUMES_ON
+    if (LightVolumesEnabled())
+    {
+        float3 L0, L1r, L1g, L1b;
+        LightVolumeSH(splatWorldPos, L0, L1r, L1g, L1b);
+        float3 emissivePart = max(o.color.rgb - 1.0, 0.0);
+        float3 albedoPart = min(o.color.rgb, 1.0);
+        o.color.rgb = albedoPart * LinearToGammaSpace(abs(L0)) * _LightVolumeIntensity + emissivePart;
+    }
+#endif
 #endif
 
     float area = ell.size.x * ell.size.y;

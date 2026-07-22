@@ -34,12 +34,13 @@ Material:
     m_Ints: []
     m_Floats:
     - _CameraPosQuantization: 0.075
-    - _ElementCount: 1881947
+    - _ElementCount: 2000000
     - _GS_ColliderBoxHeight: 39.11367
     - _GS_ColliderPlanarSort: 0
     - _GS_Positions_CoordMask: 511
     - _GS_Positions_CoordShift: 9
     - _GS_UseActiveCount: 1
     m_Colors:
-    - _CameraPos: {r: -2.0712302, g: 2.2416956, b: 1.466736, a: 0}
+    - _CameraPos: {r: 0, g: 1, b: -10, a: 0}
   m_BuildTextureStacks: []
+  m_AllowLocking: 1

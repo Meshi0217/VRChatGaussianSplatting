@@ -29,12 +29,17 @@ under URP. See [Differences from the VRChat version](#differences-from-the-vrcha
 - Editor tools: **terrain collider** generation, and **re-import** (exact / edit-settings) from a
   splat's stored import metadata
 - Android/Quest build conversion to the no-geometry splat shaders
+- **Light Volumes** — REDSIM's [VRCLightVolumes](https://github.com/REDSIM/VRCLightVolumes) (v2.1.3, MIT)
+  vendored under `LightVolumes/` and running as plain MonoBehaviours; splats can be tinted by the
+  baked ambient volume at each splat position
 - Bilingual UI (English / 日本語)
 
 ## Requirements
 
 - Unity 6 (developed against 6000.0.63f1)
 - Universal Render Pipeline with **Render Graph** (compatibility mode will not work)
+- The **Editor Coroutines** package (`com.unity.editorcoroutines`) — required by the Light Volumes
+  baking tools
 - A colour target **with an alpha channel** — see [Project setup](#project-setup); this is the one
   that silently ruins the picture if you get it wrong
 - DX11/DX12/Vulkan for the geometry-shader path; Quest uses the no-geometry path instead
@@ -119,9 +124,9 @@ has none. Since the port is single-user, **every control is local** — nothing 
 - **Gallery**: add splat objects to the UI's gallery list; when the list has entries, only the
   selected splat renders. Objects not in the list are never touched. (The master-lock toggle remains
   as a UI switch, but there is no instance master to lock against.)
-- Quality presets (Very Low / Low / Medium / High), SH Band, Gaussian Scale, Alpha Cutoff / Cull,
-  Antialiasing, Camera Quantization, LOD Splat Cap (when LOD splats are present), and an
-  **Advanced Settings** toggle.
+- Quality presets (Very Low / Low / Medium / High), SH Band, Light Volumes toggle + intensity,
+  Gaussian Scale, Alpha Cutoff / Cull, Antialiasing, Camera Quantization, LOD Splat Cap (when LOD
+  splats are present), and an **Advanced Settings** toggle.
 - Language: English / 日本語.
 - The 3D click toggles (`QualityToggle`, `TurnOnToggle`) need a `Collider` on the object and a
   `PhysicsRaycaster` on the camera; the UI builder wires both up.
@@ -138,8 +143,6 @@ Removed, because they have no meaning outside VRChat:
 
 - **Networked/synced controls.** The upstream synced the gallery selection and master lock across
   the instance; here every control is local and the local user always counts as the master.
-- **VRC Light Volumes.** The shader sampled `_UdonLightVolume*` globals that only a VRChat world
-  populates, so the keyword could only ever be off.
 - **The photo camera and mirror paths.** `_VRChatCameraMode` and `_VRChatMirrorMode` are always 0
   outside VRChat, so these branches were dead — but they still cost a second render-order texture
   per pool bucket, a second combined colour pass, and per-frame photo-camera bookkeeping.
@@ -154,6 +157,12 @@ Changed:
   render order is global material state, so it has to be rebuilt for whichever camera is about to be
   drawn. As a side effect Scene view sorting works — under an SRP, `Camera.onPreCull` never fires.
 - **`GrabPass` is gone.** See [Replacing GrabPass under URP](#replacing-grabpass-under-urp).
+- **Light Volumes run without Udon.** REDSIM's package guards every VRChat dependency behind
+  `#if UDONSHARP`, so the vendored copy under `LightVolumes/` compiles as plain MonoBehaviours
+  as-is — the `LightVolumeManager` binds the same `_UdonLightVolume*` shader globals that the
+  splat shaders sample. Baking works with the Progressive Lightmapper (or Bakery if installed).
+  The VRChat-only extras (AudioLink/TVGI integrations, ASE shaders, attribution prefabs) are not
+  vendored.
 
 Kept: the importer, the LOD system, the gallery UI, combined rendering, the terrain-collider and
 re-import tools, and the Android/Quest no-geometry build pass.
@@ -285,6 +294,8 @@ via a float-only outline-sampling fit. It also extends naturally to distorted ca
   itself a heavily modified version of [lambdalemon's gaussian splats](https://github.com/lambdalemon/vrcsplat)
 - `.PLY` importer originally adapted from [aras-p's UnityGaussianSplatting](https://github.com/aras-p/UnityGaussianSplatting)
 - The radix sort uses [d4rkpl4y3r's mipmap prefix sum trick](https://github.com/d4rkc0d3r/CompactSparseTextureDemo)
+- Light Volumes are [REDSIM's VRCLightVolumes](https://github.com/REDSIM/VRCLightVolumes) (MIT),
+  vendored under `LightVolumes/`
 
 ## License
 
@@ -365,7 +376,11 @@ VRChat から切り離した移植版です。VRChat SDK と UdonSharp は含ま
 ## VRChat 版との違い
 
 - **ネットワーク同期を削除** — ギャラリー選択・マスターロックの同期は廃止し、全操作ローカル。
-- **VRC Light Volumes を削除** — VRChat ワールドしか設定しないグローバル値に依存していたため。
+- **Light Volumes は Udon なしで動作** — REDSIM のパッケージ（v2.1.3、MIT）を `LightVolumes/` に
+  同梱。VRChat 依存はすべて `#if UDONSHARP` ガード内のため素の MonoBehaviour としてそのまま
+  コンパイルされ、`LightVolumeManager` がスプラットシェーダーの参照するグローバル値を設定します。
+  ベイクは Progressive Lightmapper（Bakery 導入済みなら Bakery も）で可能。要
+  `com.unity.editorcoroutines` パッケージ。
 - **フォトカメラ / ミラー経路を削除** — VRChat 外では常に無効なのに、プールバケットごとの追加
   レンダーオーダーテクスチャや追加カラーパスを消費していました。
 - **操作系を変更** — `Interact()`（注視プレス）は `IPointerClickHandler`（通常クリック）に。UI
