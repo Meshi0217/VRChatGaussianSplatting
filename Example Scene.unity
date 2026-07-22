@@ -11629,6 +11629,7 @@ MonoBehaviour:
   debugRenderOpaqueEllipsoids: 0
   debugDrawChunkBounds: 0
   debugDrawChunkCenterArea: 0
+  generateControlUi: 1
   cameraPositionQuantization: 0.1
   splatRenderOrderByBucket:
   - {fileID: 8400000, guid: e56a5034dc067e54c938ae96988e6960, type: 2}
@@ -11668,6 +11669,8 @@ MonoBehaviour:
   computeKeyValues: {fileID: 2100000, guid: 0f320cd4349a6fd468d11aefebddabd2, type: 2}
   radixSort: {fileID: 2100000, guid: f7cf9fca282d3d240907704845e3678e, type: 2}
   copySortedOrder: {fileID: 2100000, guid: a6d1ff407ca1ce7469ccaf488f17cb16, type: 2}
+  radixSortCompute: {fileID: 7200000, guid: fdea21a6aa2bc8f4db73759c7032a47c, type: 3}
+  copyOrderFromBufferShader: {fileID: 4800000, guid: 31da775b21256764a85305a292429f62, type: 3}
   keyValues0ByBucket:
   - {fileID: 8400000, guid: 050422f2b7f3fd748a76afabeda5ccd1, type: 2}
   - {fileID: 8400000, guid: 3d49304261e2f77498c3a06a0baeba88, type: 2}
