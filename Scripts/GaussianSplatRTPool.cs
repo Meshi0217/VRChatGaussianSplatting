@@ -21,7 +21,7 @@ namespace GaussianSplatting
         {
             public int capacity;
             public RenderTexture keyValues0, keyValues1, histograms, prefixSums, splatRenderOrder;
-            public RenderTexture combinedPositions, combinedRotations, combinedScales, combinedColors, combinedColorsCamera;
+            public RenderTexture combinedPositions, combinedRotations, combinedScales, combinedColors;
         }
 
         public static int BucketCount => BucketCapacities.Length;
@@ -67,7 +67,6 @@ namespace GaussianSplatting
                 combinedRotations = LoadRT(folder, "CombinedRotations"),
                 combinedScales = LoadRT(folder, "CombinedScales"),
                 combinedColors = LoadRT(folder, "CombinedColors"),
-                combinedColorsCamera = LoadRT(folder, "CombinedColorsCamera"),
             };
         }
 

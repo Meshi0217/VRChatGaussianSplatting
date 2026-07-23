@@ -233,7 +233,16 @@ public class RadixSort : MonoBehaviour
 
         _copyOrderFromBufferMat.SetBuffer("_SortedKeys", source);
         _copyOrderFromBufferMat.SetInt("_ElementCount", count);
-        Graphics.Blit(null, renderOrder, _copyOrderFromBufferMat, 0);
+        // The draw reads order texels only for ranks below the element count, and the Morton
+        // interleave (Utils.cginc IndexToUV: even bits -> x, odd bits -> y) confines indices
+        // [0, NextPOT(count)) to a power-of-two rectangle at the origin -- so only that rectangle
+        // is rasterized instead of the whole bucket-sized order texture.
+        int pot = Mathf.NextPowerOfTwo(Mathf.Max(1, count));
+        int bits = 0;
+        while ((1 << bits) < pot) bits++;
+        int columns = Mathf.Min(renderOrder.width, 1 << ((bits + 1) >> 1));
+        int rows = Mathf.Min(renderOrder.height, 1 << (bits >> 1));
+        GaussianSplatting.GaussianSplatBandBlit.Blit(renderOrder, _copyOrderFromBufferMat, 0, rows, columns);
         return true;
     }
 

@@ -121,7 +121,6 @@ namespace GaussianSplatting.Editor
                 mat.SetTexture("_GS_Scales", sclTex);
                 mat.SetTexture("_GS_Rotations", rotTex);
                 mat.SetTexture("_GS_Colors", colTex);
-                mat.SetTexture("_GS_ColorsCamera", colTex);
                 mat.SetTexture("_GS_SH", Texture2D.blackTexture);
                 mat.SetTexture("_GS_ChunkBounds", Texture2D.blackTexture);
                 mat.SetBuffer("_GS_ColliderOrder", orderBuffer);
@@ -135,7 +134,6 @@ namespace GaussianSplatting.Editor
                 mat.SetInt("_GS_Positions_CoordShift", coordShift);
                 mat.SetInt("_GS_ChunkSize", Mathf.Max(1, target.chunkSize));
                 mat.SetInt("_GS_SH_CoeffCount", 0);
-                mat.SetFloat("_GS_CameraColorArray", 0f);
                 mat.SetFloat("_VRChatCameraMode", 0f);
                 mat.SetFloat("_GaussianMul", 1f);
                 mat.SetFloat("_ThinThreshold", 0.005f);

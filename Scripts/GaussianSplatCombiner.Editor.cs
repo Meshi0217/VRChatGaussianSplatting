@@ -92,13 +92,11 @@ public partial class GaussianSplatCombiner
         combinedRotationsFormat = source.combinedRotationsFormat;
         combinedScalesFormat = source.combinedScalesFormat;
         combinedColorsFormat = source.combinedColorsFormat;
-        combinedColorsCameraFormat = source.combinedColorsCameraFormat;
         combinedTextureFormatsInitialized = true;
         combinedPositionsByBucket = source.combinedPositionsByBucket;
         combinedRotationsByBucket = source.combinedRotationsByBucket;
         combinedScalesByBucket = source.combinedScalesByBucket;
         combinedColorsByBucket = source.combinedColorsByBucket;
-        combinedColorsCameraByBucket = source.combinedColorsCameraByBucket;
         lodAlphaState = source.lodAlphaState;
         lodAlphaStateScratch = source.lodAlphaStateScratch;
         builtCombinedElementCount = source.builtCombinedElementCount;
@@ -110,7 +108,6 @@ public partial class GaussianSplatCombiner
         combinedRotationsFormat = RenderTextureFormat.ARGB32;
         combinedScalesFormat = RenderTextureFormat.ARGBHalf;
         combinedColorsFormat = RenderTextureFormat.ARGB32;
-        combinedColorsCameraFormat = RenderTextureFormat.ARGB32;
         combinedTextureFormatsInitialized = true;
     }
 
@@ -1301,7 +1298,6 @@ public partial class GaussianSplatCombiner
         resourcesChanged |= EnsureBucketArray(ref combinedRotationsByBucket);
         resourcesChanged |= EnsureBucketArray(ref combinedScalesByBucket);
         resourcesChanged |= EnsureBucketArray(ref combinedColorsByBucket);
-        resourcesChanged |= EnsureBucketArray(ref combinedColorsCameraByBucket);
         for (int b = 0; b < GaussianSplatRenderer.COMBINED_BUCKET_TIER_COUNT; b++)
         {
             GaussianSplatRTPool.BucketSet set = GaussianSplatRTPool.LoadBucket(b);
@@ -1309,7 +1305,6 @@ public partial class GaussianSplatCombiner
             resourcesChanged |= AssignBucketTexture(ref combinedRotationsByBucket[b], set.combinedRotations);
             resourcesChanged |= AssignBucketTexture(ref combinedScalesByBucket[b], set.combinedScales);
             resourcesChanged |= AssignBucketTexture(ref combinedColorsByBucket[b], set.combinedColors);
-            resourcesChanged |= AssignBucketTexture(ref combinedColorsCameraByBucket[b], set.combinedColorsCamera);
         }
         GaussianSplatRTPool.BucketSet baseSet = GaussianSplatRTPool.LoadBucket(maxBucket);
         resourcesChanged |= GaussianSplatImporter.EnsureSortRenderTexture(ref lodAlphaState, combinedFolderPath, assetPrefix + "_LODAlphaState", 1, 1, RenderTextureFormat.ARGBFloat, false, 1);
@@ -1391,8 +1386,6 @@ public partial class GaussianSplatCombiner
                 Vector4.one,
                 combinedElementCount,
                 0.0f,
-                baseSet.combinedColorsCamera,
-                true,
                 null,
                 passInfo.SplatCount,
                 passInfo.SplatOffset);

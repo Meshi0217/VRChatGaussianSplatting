@@ -427,6 +427,166 @@ namespace GaussianSplatting.Editor
         }
 
         /// <summary>
+        /// Checks the band-limited blit path (clears + combine passes + sort order copy restricted
+        /// to the live texel region): first small edit-mode unit tests that pin the band quad's
+        /// coverage and orientation exactly, then a play-mode A/B -- one frame rendered with the
+        /// band-limited path, one with GaussianSplatBandBlit.ForceFullscreen -- which must be
+        /// byte-identical. Needs a graphics device (run without -nographics, without -quit).
+        /// </summary>
+        public static void VerifyBandBlits()
+        {
+            try
+            {
+                RunBandUnitChecks();
+                UnityEditor.SceneManagement.EditorSceneManager.OpenScene(SearchFolder + "/Example Scene.unity", UnityEditor.SceneManagement.OpenSceneMode.Single);
+                EditorSettings.enterPlayModeOptionsEnabled = true;
+                EditorSettings.enterPlayModeOptions = EnterPlayModeOptions.DisableDomainReload;
+                EditorApplication.playModeStateChanged += OnBandPlayModeChanged;
+                EditorApplication.EnterPlaymode();
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogError("GaussianSplatCiChecks FAILED\n" + e);
+                EditorApplication.Exit(1);
+            }
+        }
+
+        // Pins GaussianSplatBandBlit's rasterized region exactly: fill a small RT with red, band-
+        // draw black over rows/columns [0, n), and require zeroes exactly there and red elsewhere.
+        static void RunBandUnitChecks()
+        {
+            RenderTexture rt = new RenderTexture(64, 64, 0, RenderTextureFormat.ARGBFloat);
+            rt.Create();
+            Texture2D red = new Texture2D(1, 1, TextureFormat.RGBAFloat, false);
+            red.SetPixel(0, 0, new Color(1f, 0f, 0f, 1f));
+            red.Apply();
+            Material copyMaterial = null;
+            try
+            {
+                Graphics.Blit(red, rt);
+                GaussianSplatBandBlit.Clear(rt, 8);
+                CheckBandRegion("band clear (8 rows)", ReadRenderTexture(rt), rt.width, rt.height, 8, rt.width);
+
+                Shader blitCopy = Shader.Find("Hidden/BlitCopy");
+                if (blitCopy == null)
+                {
+                    throw new System.Exception("Hidden/BlitCopy is missing; the band clear cannot work anywhere.");
+                }
+                copyMaterial = new Material(blitCopy) { hideFlags = HideFlags.HideAndDontSave };
+                copyMaterial.mainTexture = Texture2D.blackTexture;
+                Graphics.Blit(red, rt);
+                GaussianSplatBandBlit.Blit(rt, copyMaterial, 0, 8, 16);
+                CheckBandRegion("band rect blit (8x16)", ReadRenderTexture(rt), rt.width, rt.height, 8, 16);
+                Debug.Log("GaussianSplatCiChecks: band-blit unit checks passed.");
+            }
+            finally
+            {
+                if (copyMaterial != null) Object.DestroyImmediate(copyMaterial);
+                rt.Release();
+                Object.DestroyImmediate(rt);
+                Object.DestroyImmediate(red);
+            }
+        }
+
+        static void CheckBandRegion(string label, byte[] data, int width, int height, int rows, int columns)
+        {
+            int wrongInside = 0, wrongOutside = 0;
+            for (int y = 0; y < height; y++)
+            {
+                for (int x = 0; x < width; x++)
+                {
+                    float r = System.BitConverter.ToSingle(data, (y * width + x) * 16);
+                    bool inside = y < rows && x < columns;
+                    if (inside && r != 0f) wrongInside++;
+                    if (!inside && r != 1f) wrongOutside++;
+                }
+            }
+            if (wrongInside > 0 || wrongOutside > 0)
+            {
+                throw new System.Exception(label + ": " + wrongInside + " texels inside the band kept the old value and "
+                    + wrongOutside + " outside were overwritten -- the band quad's coverage/orientation is wrong.");
+            }
+        }
+
+        static void OnBandPlayModeChanged(PlayModeStateChange state)
+        {
+            if (state != PlayModeStateChange.EnteredPlayMode)
+            {
+                return;
+            }
+            s_smokeTicks = 0;
+            EditorApplication.update += BandSmokeTick;
+        }
+
+        static void BandSmokeTick()
+        {
+            try
+            {
+                s_smokeTicks++;
+                if (s_smokeTicks == 1)
+                {
+                    foreach (Canvas canvas in Object.FindObjectsByType<Canvas>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+                    {
+                        canvas.enabled = false;
+                    }
+                    s_smokeTarget = new RenderTexture(1280, 720, 24, RenderTextureFormat.ARGBFloat);
+                    s_smokeTarget.Create();
+                }
+                Camera camera = Camera.main;
+                if (camera == null)
+                {
+                    throw new System.Exception("the example scene has no main camera in play mode.");
+                }
+                RenderCameraTo(camera, s_smokeTarget);
+                if (s_smokeTicks < SmokeWarmupTicks)
+                {
+                    return;
+                }
+                EditorApplication.update -= BandSmokeTick;
+
+                RenderCameraTo(camera, s_smokeTarget);
+                byte[] bandFrame = ReadRenderTexture(s_smokeTarget);
+                RequireVisibleContent("band-limited frame", bandFrame);
+                SaveFramePng(s_smokeTarget, "Library/gs_ci_band_smoke.png");
+
+                GaussianSplatBandBlit.ForceFullscreen = true;
+                byte[] fullscreenFrame;
+                try
+                {
+                    RenderCameraTo(camera, s_smokeTarget);
+                    fullscreenFrame = ReadRenderTexture(s_smokeTarget);
+                }
+                finally
+                {
+                    GaussianSplatBandBlit.ForceFullscreen = false;
+                }
+
+                if (bandFrame.Length != fullscreenFrame.Length)
+                {
+                    throw new System.Exception("frame readbacks differ in size.");
+                }
+                int mismatched = 0;
+                for (int i = 0; i < bandFrame.Length; i++)
+                {
+                    if (bandFrame[i] != fullscreenFrame[i]) mismatched++;
+                }
+                if (mismatched > 0)
+                {
+                    throw new System.Exception("band-limited and fullscreen frames differ in " + mismatched + " of " + bandFrame.Length + " bytes.");
+                }
+                Debug.Log("GaussianSplatCiChecks: band-limited and fullscreen frames are byte-identical (" + bandFrame.Length + " bytes).");
+                Debug.Log("GaussianSplatCiChecks: band-blit checks passed.");
+                EditorApplication.Exit(0);
+            }
+            catch (System.Exception e)
+            {
+                EditorApplication.update -= BandSmokeTick;
+                Debug.LogError("GaussianSplatCiChecks FAILED\n" + e);
+                EditorApplication.Exit(1);
+            }
+        }
+
+        /// <summary>
         /// Play-mode check for the Android no-geometry conversion: converts the example scene the
         /// way an Android build would, verifies the converted meshes are index-only (a 4-vertex
         /// dummy buffer instead of the old splatCount * 4 zeroed vertices) with the exact quad

@@ -21,12 +21,12 @@ public partial class GaussianSplatCombiner : MonoBehaviour
 
     [SerializeField] GaussianSplatRenderer gaussianSplatRenderer;
     [SerializeField] MeshRenderer combinedSortedRenderer;
-    [SerializeField] RenderTextureFormat combinedPositionsFormat = RenderTextureFormat.ARGBFloat, combinedRotationsFormat = RenderTextureFormat.ARGB32, combinedScalesFormat = RenderTextureFormat.ARGBHalf, combinedColorsFormat = RenderTextureFormat.ARGB32, combinedColorsCameraFormat = RenderTextureFormat.ARGB32;
+    [SerializeField] RenderTextureFormat combinedPositionsFormat = RenderTextureFormat.ARGBFloat, combinedRotationsFormat = RenderTextureFormat.ARGB32, combinedScalesFormat = RenderTextureFormat.ARGBHalf, combinedColorsFormat = RenderTextureFormat.ARGB32;
     [SerializeField, HideInInspector] bool combinedTextureFormatsInitialized = true;
     [SerializeField] int combinedStartRenderQueue = 4050;
     // Per-frame output holders are rebound from the serialized bucket arrays; never serialize these.
-    [System.NonSerialized] RenderTexture combinedPositions, combinedRotations, combinedScales, combinedColors, combinedColorsCamera;
-    [SerializeField, HideInInspector] RenderTexture[] combinedPositionsByBucket, combinedRotationsByBucket, combinedScalesByBucket, combinedColorsByBucket, combinedColorsCameraByBucket;
+    [System.NonSerialized] RenderTexture combinedPositions, combinedRotations, combinedScales, combinedColors;
+    [SerializeField, HideInInspector] RenderTexture[] combinedPositionsByBucket, combinedRotationsByBucket, combinedScalesByBucket, combinedColorsByBucket;
     [SerializeField] RenderTexture lodAlphaState;
     [SerializeField] RenderTexture lodAlphaStateScratch;
     // Ping-pong state swaps these holders only; the serialized refs above stay canonical.
@@ -101,8 +101,7 @@ public partial class GaussianSplatCombiner : MonoBehaviour
         if (!TryGetTierTexture(combinedPositionsByBucket, tier, out RenderTexture positions)
             || !TryGetTierTexture(combinedRotationsByBucket, tier, out RenderTexture rotations)
             || !TryGetTierTexture(combinedScalesByBucket, tier, out RenderTexture scales)
-            || !TryGetTierTexture(combinedColorsByBucket, tier, out RenderTexture colors)
-            || !TryGetTierTexture(combinedColorsCameraByBucket, tier, out RenderTexture colorsCamera))
+            || !TryGetTierTexture(combinedColorsByBucket, tier, out RenderTexture colors))
         {
             return false;
         }
@@ -111,13 +110,12 @@ public partial class GaussianSplatCombiner : MonoBehaviour
         combinedRotations = rotations;
         combinedScales = scales;
         combinedColors = colors;
-        combinedColorsCamera = colorsCamera;
         return true;
     }
 
     public bool BindDefaultBucketResources()
     {
-        if (combinedPositions != null && combinedRotations != null && combinedScales != null && combinedColors != null && combinedColorsCamera != null)
+        if (combinedPositions != null && combinedRotations != null && combinedScales != null && combinedColors != null)
         {
             return true;
         }
@@ -137,8 +135,7 @@ public partial class GaussianSplatCombiner : MonoBehaviour
         return TryGetTierTexture(combinedPositionsByBucket, tier, out RenderTexture positions)
             && TryGetTierTexture(combinedRotationsByBucket, tier, out RenderTexture rotations)
             && TryGetTierTexture(combinedScalesByBucket, tier, out RenderTexture scales)
-            && TryGetTierTexture(combinedColorsByBucket, tier, out RenderTexture colors)
-            && TryGetTierTexture(combinedColorsCameraByBucket, tier, out RenderTexture colorsCamera);
+            && TryGetTierTexture(combinedColorsByBucket, tier, out RenderTexture colors);
     }
     [System.NonSerialized] int _activePassCount = -1;
 
@@ -426,7 +423,6 @@ public partial class GaussianSplatCombiner : MonoBehaviour
             if (material.HasProperty("_GS_Rotations")) material.SetTexture("_GS_Rotations", combinedRotations);
             if (material.HasProperty("_GS_Scales")) material.SetTexture("_GS_Scales", combinedScales);
             if (material.HasProperty("_GS_Colors")) material.SetTexture("_GS_Colors", combinedColors);
-            if (material.HasProperty("_GS_ColorsCamera")) material.SetTexture("_GS_ColorsCamera", combinedColorsCamera);
             if (material.HasProperty("_GS_Positions_CoordMask")) material.SetInt("_GS_Positions_CoordMask", positionCoordMask);
             if (material.HasProperty("_GS_Positions_CoordShift")) material.SetInt("_GS_Positions_CoordShift", positionCoordShift);
         }
@@ -438,8 +434,7 @@ public partial class GaussianSplatCombiner : MonoBehaviour
         return (combinedPositions == null || EnsureRenderTextureCreated(combinedPositions, "Combined positions"))
             && (combinedRotations == null || EnsureRenderTextureCreated(combinedRotations, "Combined rotations"))
             && (combinedScales == null || EnsureRenderTextureCreated(combinedScales, "Combined scales"))
-            && (combinedColors == null || EnsureRenderTextureCreated(combinedColors, "Combined colors"))
-            && (combinedColorsCamera == null || EnsureRenderTextureCreated(combinedColorsCamera, "Combined camera colors"));
+            && (combinedColors == null || EnsureRenderTextureCreated(combinedColors, "Combined colors"));
     }
 
     public void SetRendererEnabled(bool enabled)
@@ -488,7 +483,7 @@ public partial class GaussianSplatCombiner : MonoBehaviour
     // Runs the scene-global selection (2D mip pyramid -> single alpha = scene budget) then the combine over
     // the whole fused set, writing the selection-compacted output [0, selected): every object's chunks flow
     // through the same selection pass. selectionTarget drives the alpha adapt. Returns false if nothing baked.
-    bool UpdateFusedLOD(Vector3 screenCameraPos, Vector3 lodCameraPos, Vector3 lodCameraForward, int lodRegionStart, int combinedCoordShift, int selectionTarget, Vector4 lodScreenParams, bool adaptLodSelection, bool forceMinLodAlpha, bool useEditorOps)
+    bool UpdateFusedLOD(Vector3 screenCameraPos, Vector3 lodCameraPos, Vector3 lodCameraForward, int lodRegionStart, int combinedCoordShift, int selectionTarget, int liveRows, Vector4 lodScreenParams, bool adaptLodSelection, bool forceMinLodAlpha, bool useEditorOps)
     {
         if (lodFusedObjectCount <= 0 || lodUnifiedSelectMaterial == null || lodUnifiedCombineMaterial == null
             || lodFusedPositions == null || lodUnifiedSelection == null || lodFusedObjects == null
@@ -611,10 +606,10 @@ public partial class GaussianSplatCombiner : MonoBehaviour
         lodUnifiedCombineMaterial.SetInt("_LODDebugColors", 0);
 #endif
         lodUnifiedCombineMaterial.SetVector("_LODCombineOutputParams", new Vector4(lodRegionStart, combinedCoordShift, 0.0f, 0.0f));
-        Blit(combinedPositions, lodUnifiedCombineMaterial, 0, useEditorOps);
-        Blit(combinedRotations, lodUnifiedCombineMaterial, 1, useEditorOps);
-        Blit(combinedScales, lodUnifiedCombineMaterial, 2, useEditorOps);
-        Blit(combinedColors, lodUnifiedCombineMaterial, 3, useEditorOps);
+        GaussianSplatBandBlit.Blit(combinedPositions, lodUnifiedCombineMaterial, 0, liveRows);
+        GaussianSplatBandBlit.Blit(combinedRotations, lodUnifiedCombineMaterial, 1, liveRows);
+        GaussianSplatBandBlit.Blit(combinedScales, lodUnifiedCombineMaterial, 2, liveRows);
+        GaussianSplatBandBlit.Blit(combinedColors, lodUnifiedCombineMaterial, 3, liveRows);
         return true;
     }
 
@@ -626,11 +621,11 @@ public partial class GaussianSplatCombiner : MonoBehaviour
 #if UNITY_EDITOR
         SetEditorReadback(0, 0, 0.0f);
 #endif
-        if (combinedSortedRenderer == null || combinedPositions == null || combinedRotations == null || combinedScales == null || combinedColors == null || combinedColorsCamera == null)
+        if (combinedSortedRenderer == null || combinedPositions == null || combinedRotations == null || combinedScales == null || combinedColors == null)
         {
             BindDefaultBucketResources();
         }
-        if (combinedSortedRenderer == null || combinedPositions == null || combinedRotations == null || combinedScales == null || combinedColors == null || combinedColorsCamera == null)
+        if (combinedSortedRenderer == null || combinedPositions == null || combinedRotations == null || combinedScales == null || combinedColors == null)
         {
 #if !UNITY_EDITOR
             Debug.LogError("Gaussian splat renderer is missing generated resources. Refresh the GaussianSplatRenderer in the editor.");
@@ -649,10 +644,6 @@ public partial class GaussianSplatCombiner : MonoBehaviour
         int positionCapacity = combinedPositions.width * combinedPositions.height;
         int colorCapacity = combinedColors.width * combinedColors.height;
         int combinedCapacity = Mathf.Min(positionCapacity, colorCapacity);
-        Blit(Texture2D.blackTexture, combinedPositions, useEditorOps);
-        Blit(Texture2D.blackTexture, combinedRotations, useEditorOps);
-        Blit(Texture2D.blackTexture, combinedScales, useEditorOps);
-        Blit(Texture2D.blackTexture, combinedColors, useEditorOps);
         int combinedOffset = 0;
 #if UNITY_EDITOR
         int editorReadbackCount = 0;
@@ -690,7 +681,17 @@ public partial class GaussianSplatCombiner : MonoBehaviour
                 sceneHardBudget = Mathf.Min(remainingCapacity, activeLodMaxSplatCount);
                 sceneSelectionTarget = sceneHardBudget;
             }
-            if (!UpdateFusedLOD(screenCameraPos, lodCameraPos, lodCameraForward, bakedNonLodCount, combinedCoordShift, sceneSelectionTarget, lodScreenParams, adaptLodSelection, forceMinLodAlpha, useEditorOps))
+            // The draw only ever reads combined ids below the hard budget (it culls against
+            // _combinedActualSplatCount before any fetch), so both the clears and the combine
+            // passes rasterize just the block rows covering [0, budget) instead of the whole
+            // bucket-sized textures. Texels beyond that band are never read by anything.
+            int liveCount = Mathf.Min(combinedCapacity, bakedNonLodCount + sceneHardBudget);
+            int liveRows = GaussianSplatBandBlit.BlockLayoutRows(liveCount, combinedPositions.width, combinedPositions.height);
+            GaussianSplatBandBlit.Clear(combinedPositions, liveRows);
+            GaussianSplatBandBlit.Clear(combinedRotations, liveRows);
+            GaussianSplatBandBlit.Clear(combinedScales, liveRows);
+            GaussianSplatBandBlit.Clear(combinedColors, liveRows);
+            if (!UpdateFusedLOD(screenCameraPos, lodCameraPos, lodCameraForward, bakedNonLodCount, combinedCoordShift, sceneSelectionTarget, liveRows, lodScreenParams, adaptLodSelection, forceMinLodAlpha, useEditorOps))
             {
                 _combinedActualSplatCount = 0;
                 SetRendererEnabled(false);

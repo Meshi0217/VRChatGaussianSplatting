@@ -7,8 +7,8 @@ namespace GaussianSplatting
 public partial class GaussianSplatRenderer : MonoBehaviour
 {
     // Number of pre-baked combined-resource sets the renderer can switch between at runtime by LOD budget,
-    // without reallocating. VRAM COST: each tier holds its own combined position/rotation/scale/color/
-    // colorsCamera textures + radix sort buffers + render-order RTs, so total VRAM is roughly the sum over
+    // without reallocating. VRAM COST: each tier holds its own combined position/rotation/scale/color
+    // textures + radix sort buffers + render-order RTs, so total VRAM is roughly the sum over
     // tiers. Lower tiers are sized to their (smaller) element count, so it is NOT a flat 4x of the top tier,
     // but it is still several times a single set — the deliberate tradeoff for realloc-free quality switching.
     public const int COMBINED_BUCKET_TIER_COUNT = 4;
