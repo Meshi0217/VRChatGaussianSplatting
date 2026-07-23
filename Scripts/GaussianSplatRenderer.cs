@@ -942,11 +942,16 @@ public partial class GaussianSplatRenderer : MonoBehaviour
             Debug.LogError("Splat Render Order texture is not assigned. Please assign a RenderTexture.");
             return false;
         }
+        // The blit scratch RTs (~10 MB) only need GPU memory when the compute sort can't run;
+        // the compute path never binds them, and the editor preview / blit fallback auto-create
+        // them on their first Blit if it ever comes to that.
+        bool needsBlitSortTextures = !_radixSort.ComputeSortAvailable();
         if (!EnsureRenderTextureCreated(splatRenderOrder, "Splat render order")
-            || !EnsureRenderTextureCreated(_radixSort.keyValues0, "RadixSort keyValues0")
-            || !EnsureRenderTextureCreated(_radixSort.keyValues1, "RadixSort keyValues1")
-            || !EnsureRenderTextureCreated(_radixSort.histograms, "RadixSort histograms")
-            || !EnsureRenderTextureCreated(_radixSort.prefixSums, "RadixSort prefixSums")
+            || (needsBlitSortTextures
+                && (!EnsureRenderTextureCreated(_radixSort.keyValues0, "RadixSort keyValues0")
+                    || !EnsureRenderTextureCreated(_radixSort.keyValues1, "RadixSort keyValues1")
+                    || !EnsureRenderTextureCreated(_radixSort.histograms, "RadixSort histograms")
+                    || !EnsureRenderTextureCreated(_radixSort.prefixSums, "RadixSort prefixSums")))
             || (combined != null && !combined.EnsureResourcesCreated()))
         {
             Debug.LogError("Gaussian splat render textures could not be created at runtime.");

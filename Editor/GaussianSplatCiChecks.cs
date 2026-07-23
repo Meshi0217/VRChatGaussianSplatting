@@ -212,6 +212,447 @@ namespace GaussianSplatting.Editor
 
             EditorApplication.Exit(failed ? 1 : 0);
         }
+
+        /// <summary>
+        /// Play-mode smoke test: enters play mode on the example scene, renders the main camera
+        /// off-screen through URP with the compute sort, verifies the blit scratch RTs were never
+        /// created (the lazy-allocation path), then re-renders with the compute shader hidden so
+        /// the blit fallback runs, and requires the two rendered frames to be byte-identical.
+        /// Needs a graphics device (run without -nographics, without -quit).
+        /// </summary>
+        public static void VerifyPlayModeSmoke()
+        {
+            try
+            {
+                if (!SystemInfo.supportsComputeShaders)
+                {
+                    throw new System.Exception("compute shaders are unsupported on this editor platform; the smoke test cannot run.");
+                }
+                UnityEditor.SceneManagement.EditorSceneManager.OpenScene(SearchFolder + "/Example Scene.unity", UnityEditor.SceneManagement.OpenSceneMode.Single);
+                // Keep this state machine's statics alive across the play-mode transition.
+                EditorSettings.enterPlayModeOptionsEnabled = true;
+                EditorSettings.enterPlayModeOptions = EnterPlayModeOptions.DisableDomainReload;
+                EditorApplication.playModeStateChanged += OnSmokePlayModeChanged;
+                EditorApplication.EnterPlaymode();
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogError("GaussianSplatCiChecks FAILED\n" + e);
+                EditorApplication.Exit(1);
+            }
+        }
+
+        const int SmokeWarmupTicks = 30;
+        static int s_smokeTicks;
+        static RenderTexture s_smokeTarget;
+
+        static void OnSmokePlayModeChanged(PlayModeStateChange state)
+        {
+            if (state != PlayModeStateChange.EnteredPlayMode)
+            {
+                return;
+            }
+            s_smokeTicks = 0;
+            EditorApplication.update += SmokeTick;
+        }
+
+        static void SmokeTick()
+        {
+            try
+            {
+                s_smokeTicks++;
+                if (s_smokeTicks == 1)
+                {
+                    // The in-world UI fades in over time; keep the compared frames time-invariant.
+                    foreach (Canvas canvas in Object.FindObjectsByType<Canvas>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+                    {
+                        canvas.enabled = false;
+                    }
+                    s_smokeTarget = new RenderTexture(1280, 720, 24, RenderTextureFormat.ARGBFloat);
+                    s_smokeTarget.Create();
+                }
+                Camera camera = Camera.main;
+                if (camera == null)
+                {
+                    throw new System.Exception("the example scene has no main camera in play mode.");
+                }
+                // Warmup renders let the startup suppression window (8 frames) and the RT-pool
+                // bucket debounce (0.2 s) settle before the compared frames.
+                RenderCameraTo(camera, s_smokeTarget);
+                if (s_smokeTicks < SmokeWarmupTicks)
+                {
+                    return;
+                }
+                EditorApplication.update -= SmokeTick;
+                RunSmokeChecks(camera);
+                Debug.Log("GaussianSplatCiChecks: play-mode smoke test passed.");
+                EditorApplication.Exit(0);
+            }
+            catch (System.Exception e)
+            {
+                EditorApplication.update -= SmokeTick;
+                Debug.LogError("GaussianSplatCiChecks FAILED\n" + e);
+                EditorApplication.Exit(1);
+            }
+        }
+
+        static void RenderCameraTo(Camera camera, RenderTexture target)
+        {
+            UnityEngine.Rendering.Universal.UniversalRenderPipeline.SingleCameraRequest request =
+                new UnityEngine.Rendering.Universal.UniversalRenderPipeline.SingleCameraRequest { destination = target };
+            if (!RenderPipeline.SupportsRenderRequest(camera, request))
+            {
+                throw new System.Exception("URP rejected the off-screen render request.");
+            }
+            RenderPipeline.SubmitRenderRequest(camera, request);
+        }
+
+        static void RunSmokeChecks(Camera camera)
+        {
+            GaussianSplatRenderer renderer = Object.FindFirstObjectByType<GaussianSplatRenderer>();
+            RadixSort radixSort = Object.FindFirstObjectByType<RadixSort>();
+            if (renderer == null || radixSort == null)
+            {
+                throw new System.Exception("play mode has no GaussianSplatRenderer or RadixSort.");
+            }
+            if (!radixSort.ComputeSortAvailable())
+            {
+                throw new System.Exception("the compute sort is unavailable in play mode (missing serialized assets?).");
+            }
+            if (renderer.splatRenderOrder == null || !renderer.splatRenderOrder.IsCreated())
+            {
+                throw new System.Exception("the render-order texture was never created, so no sort ran during warmup.");
+            }
+
+            // All warmup frames used the compute sort: the blit scratch RTs must never have
+            // been allocated (this is the lazy-allocation change under test).
+            RenderTexture[] scratch = { radixSort.keyValues0, radixSort.keyValues1, radixSort.histograms, radixSort.prefixSums };
+            foreach (RenderTexture rt in scratch)
+            {
+                if (rt != null && rt.IsCreated())
+                {
+                    throw new System.Exception("blit scratch RT '" + rt.name + "' was created while the compute sort was active.");
+                }
+            }
+
+            RenderCameraTo(camera, s_smokeTarget);
+            byte[] computeFrame = ReadRenderTexture(s_smokeTarget);
+            RequireVisibleContent("compute-sorted frame", computeFrame);
+            // Library/ survives the editor exit (Unity wipes Temp/ on shutdown) and is git-ignored.
+            SaveFramePng(s_smokeTarget, "Library/gs_ci_smoke.png");
+
+            ComputeShader savedCompute = radixSort.radixSortCompute;
+            radixSort.radixSortCompute = null;
+            try
+            {
+                RenderCameraTo(camera, s_smokeTarget);
+            }
+            finally
+            {
+                radixSort.radixSortCompute = savedCompute;
+            }
+            byte[] blitFrame = ReadRenderTexture(s_smokeTarget);
+
+            bool anyCreated = false;
+            foreach (RenderTexture rt in scratch)
+            {
+                anyCreated |= rt != null && rt.IsCreated();
+            }
+            if (!anyCreated)
+            {
+                throw new System.Exception("the blit fallback frame did not create any scratch RT, so the fallback cannot have sorted.");
+            }
+
+            if (computeFrame.Length != blitFrame.Length)
+            {
+                throw new System.Exception("frame readbacks differ in size.");
+            }
+            int mismatched = 0;
+            for (int i = 0; i < computeFrame.Length; i++)
+            {
+                if (computeFrame[i] != blitFrame[i]) mismatched++;
+            }
+            if (mismatched > 0)
+            {
+                throw new System.Exception("compute-sorted and blit-sorted frames differ in " + mismatched + " of " + computeFrame.Length + " bytes.");
+            }
+            Debug.Log("GaussianSplatCiChecks: compute-sorted and blit-sorted frames are byte-identical (" + computeFrame.Length + " bytes).");
+        }
+
+        // Saves the rendered frame for humans to look at (the byte comparison is the actual check).
+        static void SaveFramePng(RenderTexture source, string path)
+        {
+            RenderTexture previous = RenderTexture.active;
+            Texture2D readback = new Texture2D(source.width, source.height, TextureFormat.RGBA32, false);
+            try
+            {
+                RenderTexture.active = source;
+                readback.ReadPixels(new Rect(0, 0, source.width, source.height), 0, 0);
+                readback.Apply();
+                System.IO.File.WriteAllBytes(path, readback.EncodeToPNG());
+                Debug.Log("GaussianSplatCiChecks: wrote " + path);
+            }
+            finally
+            {
+                RenderTexture.active = previous;
+                Object.DestroyImmediate(readback);
+            }
+        }
+
+        // A blank render (camera drew nothing) is a pass-shaped failure for the byte comparison,
+        // so require a meaningful fraction of pixels to differ from the top-left background pixel.
+        static void RequireVisibleContent(string label, byte[] frame)
+        {
+            float r0 = System.BitConverter.ToSingle(frame, 0);
+            float g0 = System.BitConverter.ToSingle(frame, 4);
+            float b0 = System.BitConverter.ToSingle(frame, 8);
+            int texels = frame.Length / 16;
+            int distinct = 0;
+            for (int texel = 0; texel < texels; texel++)
+            {
+                int offset = texel * 16;
+                if (Mathf.Abs(System.BitConverter.ToSingle(frame, offset) - r0) > 1.0f / 255.0f
+                    || Mathf.Abs(System.BitConverter.ToSingle(frame, offset + 4) - g0) > 1.0f / 255.0f
+                    || Mathf.Abs(System.BitConverter.ToSingle(frame, offset + 8) - b0) > 1.0f / 255.0f)
+                {
+                    distinct++;
+                }
+            }
+            float coverage = (float)distinct / texels;
+            Debug.Log("GaussianSplatCiChecks: " + label + " -- " + (coverage * 100.0f).ToString("F1") + "% of pixels differ from the background.");
+            if (coverage < 0.01f)
+            {
+                throw new System.Exception(label + ": under 1% of pixels differ from the background; the splats did not render.");
+            }
+        }
+
+        /// <summary>
+        /// Runtime equivalence check for the two sort paths. Needs a graphics device (run without
+        /// -nographics). Opens the example scene, drives one editor sort to bind the sort inputs,
+        /// then verifies that (1) the compute sort leaves the blit scratch RTs released, (2) the
+        /// blit fallback auto-creates them when the compute shader is unavailable, and (3) both
+        /// paths write byte-identical render orders.
+        /// </summary>
+        public static void VerifySortRuntime()
+        {
+            try
+            {
+                RunSortRuntimeChecks();
+                Debug.Log("GaussianSplatCiChecks: sort runtime checks passed.");
+                EditorApplication.Exit(0);
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogError("GaussianSplatCiChecks FAILED\n" + e);
+                EditorApplication.Exit(1);
+            }
+        }
+
+        static void RunSortRuntimeChecks()
+        {
+            if (!SystemInfo.supportsComputeShaders)
+            {
+                throw new System.Exception("compute shaders are unsupported on this editor platform; the equivalence check cannot run.");
+            }
+
+            UnityEditor.SceneManagement.EditorSceneManager.OpenScene(SearchFolder + "/Example Scene.unity", UnityEditor.SceneManagement.OpenSceneMode.Single);
+            GaussianSplatRenderer renderer = Object.FindFirstObjectByType<GaussianSplatRenderer>();
+            RadixSort radixSort = Object.FindFirstObjectByType<RadixSort>();
+            if (renderer == null || radixSort == null)
+            {
+                throw new System.Exception("example scene is missing the GaussianSplatRenderer or RadixSort component.");
+            }
+
+            GameObject cameraObject = new GameObject("SortCiCamera");
+            try
+            {
+                Camera camera = cameraObject.AddComponent<Camera>();
+                cameraObject.transform.position = renderer.transform.position + new Vector3(2.0f, 1.5f, 2.0f);
+                cameraObject.transform.LookAt(renderer.transform.position);
+
+                if (!renderer.PrepareEditorCameraRender(camera))
+                {
+                    throw new System.Exception("PrepareEditorCameraRender failed; the sort inputs could not be bound.");
+                }
+                RenderTexture order = renderer.splatRenderOrder;
+                if (order == null || radixSort.elementCount <= 0)
+                {
+                    throw new System.Exception("no render-order texture or element count after the editor sort.");
+                }
+                Debug.Log("GaussianSplatCiChecks: sorting " + radixSort.elementCount + " elements into "
+                    + order.width + "x" + order.height + " " + order.format + ".");
+
+                // Baseline: the runtime blit path (the actual fallback), forced by hiding the
+                // compute shader. In-memory change only; the scene is never saved.
+                RenderTexture[] scratch = { radixSort.keyValues0, radixSort.keyValues1, radixSort.histograms, radixSort.prefixSums };
+                ComputeShader savedCompute = radixSort.radixSortCompute;
+                radixSort.radixSortCompute = null;
+                try
+                {
+                    radixSort.RunFullSort(order, 0);
+                }
+                finally
+                {
+                    radixSort.radixSortCompute = savedCompute;
+                }
+                byte[] blitOrder = ReadRenderTexture(order);
+                VerifyOrderIsPermutation("runtime blit baseline", blitOrder, radixSort.elementCount, order.width);
+
+                // 1. The compute path must never touch the blit scratch RTs (this is what lets the
+                //    renderer skip pre-creating them when the compute sort is available), and must
+                //    produce the identical order to the blit fallback.
+                foreach (RenderTexture rt in scratch)
+                {
+                    if (rt != null) rt.Release();
+                }
+                radixSort.RunFullSort(order, 0);
+                foreach (RenderTexture rt in scratch)
+                {
+                    if (rt != null && rt.IsCreated())
+                    {
+                        throw new System.Exception("the compute sort touched blit scratch RT '" + rt.name + "'.");
+                    }
+                }
+                CompareOrders("compute vs runtime blit", ReadRenderTexture(order), blitOrder, radixSort.elementCount, order.width);
+
+                // 2. With the compute shader unavailable again, the blit fallback must auto-create
+                //    its scratch RTs (they were released above) and reproduce the baseline exactly.
+                radixSort.radixSortCompute = null;
+                try
+                {
+                    radixSort.RunFullSort(order, 0);
+                }
+                finally
+                {
+                    radixSort.radixSortCompute = savedCompute;
+                }
+                bool anyCreated = false;
+                foreach (RenderTexture rt in scratch)
+                {
+                    anyCreated |= rt != null && rt.IsCreated();
+                }
+                if (!anyCreated)
+                {
+                    throw new System.Exception("the blit fallback ran without creating any scratch RT, so it cannot actually have sorted.");
+                }
+                CompareOrders("blit fallback after RT release vs runtime blit", ReadRenderTexture(order), blitOrder, radixSort.elementCount, order.width);
+            }
+            finally
+            {
+                Object.DestroyImmediate(cameraObject);
+            }
+        }
+
+        static byte[] ReadRenderTexture(RenderTexture source)
+        {
+            RenderTexture temp = RenderTexture.GetTemporary(source.width, source.height, 0, RenderTextureFormat.ARGBFloat);
+            RenderTexture previous = RenderTexture.active;
+            try
+            {
+                Graphics.Blit(source, temp);
+                RenderTexture.active = temp;
+                Texture2D readback = new Texture2D(source.width, source.height, TextureFormat.RGBAFloat, false);
+                try
+                {
+                    readback.ReadPixels(new Rect(0, 0, source.width, source.height), 0, 0);
+                    readback.Apply();
+                    return readback.GetRawTextureData();
+                }
+                finally
+                {
+                    Object.DestroyImmediate(readback);
+                }
+            }
+            finally
+            {
+                RenderTexture.active = previous;
+                RenderTexture.ReleaseTemporary(temp);
+            }
+        }
+
+        // Inverse of the interleave in RadixSort/Utils.cginc -- rank r lives at texel
+        // (Deinterleave(r), Deinterleave(r >> 1)) of the render-order texture.
+        static uint DeinterleaveWithZero(uint word)
+        {
+            word &= 0x55555555;
+            word = (word | (word >> 1)) & 0x33333333;
+            word = (word | (word >> 2)) & 0x0f0f0f0f;
+            word = (word | (word >> 4)) & 0x00ff00ff;
+            word = (word | (word >> 8)) & 0x0000ffff;
+            return word;
+        }
+
+        // Byte offset of the rank's order id in an RGBAFloat readback (16 bytes/texel, id in R).
+        static long RankByteOffset(uint rank, int width)
+        {
+            long x = DeinterleaveWithZero(rank);
+            long y = DeinterleaveWithZero(rank >> 1);
+            return (y * width + x) * 16;
+        }
+
+        // Only the texels holding ranks below the element count are ever read by the draw
+        // (GS.cginc culls id >= actualSplatCount before the order fetch), and the two copy
+        // shaders deliberately differ in how they pad the rest of the texture -- so both checks
+        // walk exactly the readable rank -> texel (Morton) mapping and nothing else.
+        static void CompareOrders(string label, byte[] actual, byte[] expected, int elementCount, int width)
+        {
+            if (actual.Length != expected.Length)
+            {
+                throw new System.Exception(label + ": readback sizes differ (" + actual.Length + " vs " + expected.Length + " bytes).");
+            }
+            int mismatched = 0;
+            StringBuilder samples = new StringBuilder();
+            for (uint rank = 0; rank < (uint)elementCount; rank++)
+            {
+                long offset = RankByteOffset(rank, width);
+                float actualId = System.BitConverter.ToSingle(actual, (int)offset);
+                float expectedId = System.BitConverter.ToSingle(expected, (int)offset);
+                if (actualId == expectedId)
+                {
+                    continue;
+                }
+                mismatched++;
+                if (mismatched <= 8)
+                {
+                    samples.AppendLine("  rank " + rank + ": expected id " + expectedId + ", got " + actualId);
+                }
+            }
+            if (mismatched > 0)
+            {
+                throw new System.Exception(label + ": " + mismatched + " of " + elementCount + " ranks differ. First mismatches:\n" + samples);
+            }
+            Debug.Log("GaussianSplatCiChecks: " + label + " -- orders are identical on all " + elementCount + " ranks.");
+        }
+
+        static void VerifyOrderIsPermutation(string label, byte[] orderData, int elementCount, int width)
+        {
+            bool[] seen = new bool[elementCount];
+            int outOfRange = 0;
+            int duplicates = 0;
+            for (uint rank = 0; rank < (uint)elementCount; rank++)
+            {
+                float idValue = System.BitConverter.ToSingle(orderData, (int)RankByteOffset(rank, width));
+                int id = (int)idValue;
+                if (idValue != id || id < 0 || id >= elementCount)
+                {
+                    outOfRange++;
+                }
+                else if (seen[id])
+                {
+                    duplicates++;
+                }
+                else
+                {
+                    seen[id] = true;
+                }
+            }
+            if (outOfRange > 0 || duplicates > 0)
+            {
+                throw new System.Exception(label + ": ids are not a permutation of 0.." + (elementCount - 1)
+                    + " (" + outOfRange + " out of range, " + duplicates + " duplicated).");
+            }
+            Debug.Log("GaussianSplatCiChecks: " + label + " -- ids form a permutation of 0.." + (elementCount - 1) + ".");
+        }
     }
 }
 #endif

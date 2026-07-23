@@ -119,6 +119,15 @@ public class RadixSort : MonoBehaviour
         CopySortedOrderInternal(renderOrder, slice, false);
     }
 
+    // True when the runtime sort will take the compute path. The blit scratch RTs are then never
+    // bound as blit targets, so the renderer skips pre-creating them on the GPU; the editor
+    // preview and the blit fallback auto-create them on their first Blit instead.
+    public bool ComputeSortAvailable()
+    {
+        return radixSortCompute != null && copyOrderFromBufferShader != null && computeKeyValues != null
+            && SystemInfo.supportsComputeShaders;
+    }
+
     void OnDisable()
     {
         ReleaseComputeSortResources();
@@ -171,8 +180,7 @@ public class RadixSort : MonoBehaviour
 
     bool TryRunFullSortCompute(RenderTexture renderOrder)
     {
-        if (radixSortCompute == null || copyOrderFromBufferShader == null || computeKeyValues == null
-            || renderOrder == null || elementCount <= 0 || !SystemInfo.supportsComputeShaders)
+        if (!ComputeSortAvailable() || renderOrder == null || elementCount <= 0)
         {
             return false;
         }

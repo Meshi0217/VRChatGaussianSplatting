@@ -28,7 +28,10 @@ Shader "Hidden/GaussianSplatting/CopyRenderOrderFromBuffer"
                 uint index = UVToIndex((uint2)floor(input.pos.xy));
                 if (index >= (uint)_ElementCount)
                 {
-                    return 0.0;
+                    // The draw never reads these texels (it culls id >= actualSplatCount before
+                    // the order fetch). The sentinel matches the blit sort's out-of-range value
+                    // (RadixSort.shader) so an accidental read yields an invalid id, not splat 0.
+                    return 1e10;
                 }
                 return (float)_SortedKeys[index].y;
             }
