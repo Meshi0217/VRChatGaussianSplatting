@@ -47,9 +47,14 @@ float _GS_ColliderOpacityLogMultiplier;
 #define GS_LOG2_E 1.4426950408889634
 
 struct appdata {
-    float4 position : POSITION;
 #if defined(GS_NO_GEOM)
+    // The no-geom mesh is index-only: a 4-vertex dummy buffer whose index VALUES encode
+    // splat * 4 + corner, so vertexID (== the index value on an indexed draw) is the only
+    // input. POSITION must not be declared here -- the input assembler would fetch it past
+    // the 4-vertex buffer -- and no vert path ever reads it anyway.
     uint vertexID : SV_VertexID;
+#else
+    float4 position : POSITION;
 #endif
     UNITY_VERTEX_INPUT_INSTANCE_ID
 };

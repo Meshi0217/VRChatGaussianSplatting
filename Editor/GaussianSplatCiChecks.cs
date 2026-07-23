@@ -427,6 +427,230 @@ namespace GaussianSplatting.Editor
         }
 
         /// <summary>
+        /// Play-mode check for the Android no-geometry conversion: converts the example scene the
+        /// way an Android build would, verifies the converted meshes are index-only (a 4-vertex
+        /// dummy buffer instead of the old splatCount * 4 zeroed vertices) with the exact quad
+        /// index pattern the shader decodes, renders a frame, then swaps in meshes rebuilt the old
+        /// way (real splatCount * 4 vertex buffers, identical indices) and requires the two frames
+        /// to be byte-identical. Needs a graphics device (run without -nographics, without -quit).
+        /// </summary>
+        public static void VerifyAndroidNoGeom()
+        {
+            try
+            {
+                UnityEngine.SceneManagement.Scene scene = UnityEditor.SceneManagement.EditorSceneManager.OpenScene(
+                    SearchFolder + "/Example Scene.unity", UnityEditor.SceneManagement.OpenSceneMode.Single);
+                int converted = GaussianSplatAndroidBuildProcessor.ConvertScene(scene);
+                if (converted <= 0)
+                {
+                    throw new System.Exception("the Android conversion converted no renderers in the example scene.");
+                }
+                Debug.Log("GaussianSplatCiChecks: converted " + converted + " renderer(s) to the Android no-geom path.");
+                // DisableSceneReload keeps the in-memory conversion alive across the play-mode
+                // transition (a reload would restore the desktop meshes from disk).
+                EditorSettings.enterPlayModeOptionsEnabled = true;
+                EditorSettings.enterPlayModeOptions = EnterPlayModeOptions.DisableDomainReload | EnterPlayModeOptions.DisableSceneReload;
+                EditorApplication.playModeStateChanged += OnAndroidPlayModeChanged;
+                EditorApplication.EnterPlaymode();
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogError("GaussianSplatCiChecks FAILED\n" + e);
+                EditorApplication.Exit(1);
+            }
+        }
+
+        static void OnAndroidPlayModeChanged(PlayModeStateChange state)
+        {
+            if (state != PlayModeStateChange.EnteredPlayMode)
+            {
+                return;
+            }
+            s_smokeTicks = 0;
+            EditorApplication.update += AndroidSmokeTick;
+        }
+
+        static void AndroidSmokeTick()
+        {
+            try
+            {
+                s_smokeTicks++;
+                if (s_smokeTicks == 1)
+                {
+                    foreach (Canvas canvas in Object.FindObjectsByType<Canvas>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+                    {
+                        canvas.enabled = false;
+                    }
+                    s_smokeTarget = new RenderTexture(1280, 720, 24, RenderTextureFormat.ARGBFloat);
+                    s_smokeTarget.Create();
+                }
+                Camera camera = Camera.main;
+                if (camera == null)
+                {
+                    throw new System.Exception("the example scene has no main camera in play mode.");
+                }
+                RenderCameraTo(camera, s_smokeTarget);
+                if (s_smokeTicks < SmokeWarmupTicks)
+                {
+                    return;
+                }
+                EditorApplication.update -= AndroidSmokeTick;
+                RunAndroidNoGeomChecks(camera);
+                Debug.Log("GaussianSplatCiChecks: Android no-geom checks passed.");
+                EditorApplication.Exit(0);
+            }
+            catch (System.Exception e)
+            {
+                EditorApplication.update -= AndroidSmokeTick;
+                Debug.LogError("GaussianSplatCiChecks FAILED\n" + e);
+                EditorApplication.Exit(1);
+            }
+        }
+
+        static void RunAndroidNoGeomChecks(Camera camera)
+        {
+            List<MeshFilter> convertedFilters = new List<MeshFilter>();
+            foreach (MeshFilter filter in Object.FindObjectsByType<MeshFilter>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+            {
+                if (filter.sharedMesh != null && filter.sharedMesh.name.EndsWith("_AndroidNoGeom"))
+                {
+                    convertedFilters.Add(filter);
+                }
+            }
+            if (convertedFilters.Count == 0)
+            {
+                throw new System.Exception("no converted (_AndroidNoGeom) meshes survived into play mode.");
+            }
+
+            long totalDroppedBytes = 0;
+            foreach (MeshFilter filter in convertedFilters)
+            {
+                totalDroppedBytes += VerifyIndexOnlyMesh(filter);
+            }
+            Debug.Log("GaussianSplatCiChecks: " + convertedFilters.Count + " converted mesh(es) are index-only; the old vertex buffers would have carried "
+                + (totalDroppedBytes / (1024.0 * 1024.0)).ToString("F1") + " MB of zeroes.");
+
+            RenderCameraTo(camera, s_smokeTarget);
+            byte[] indexOnlyFrame = ReadRenderTexture(s_smokeTarget);
+            RequireVisibleContent("index-only no-geom frame", indexOnlyFrame);
+            SaveFramePng(s_smokeTarget, "Library/gs_ci_android_smoke.png");
+
+            // Rebuild every converted mesh the way the old generator did -- a real vertex buffer
+            // covering every index value -- and render again. SV_VertexID comes from the index
+            // values either way, so the frames must match exactly.
+            List<Mesh> legacyMeshes = new List<Mesh>();
+            try
+            {
+                foreach (MeshFilter filter in convertedFilters)
+                {
+                    Mesh legacy = BuildLegacyStyleMesh(filter.sharedMesh);
+                    legacyMeshes.Add(legacy);
+                    filter.sharedMesh = legacy;
+                }
+                RenderCameraTo(camera, s_smokeTarget);
+            }
+            finally
+            {
+                foreach (Mesh mesh in legacyMeshes)
+                {
+                    Object.Destroy(mesh);
+                }
+            }
+            byte[] legacyFrame = ReadRenderTexture(s_smokeTarget);
+
+            if (indexOnlyFrame.Length != legacyFrame.Length)
+            {
+                throw new System.Exception("frame readbacks differ in size.");
+            }
+            int mismatched = 0;
+            for (int i = 0; i < indexOnlyFrame.Length; i++)
+            {
+                if (indexOnlyFrame[i] != legacyFrame[i]) mismatched++;
+            }
+            if (mismatched > 0)
+            {
+                throw new System.Exception("index-only and legacy-mesh frames differ in " + mismatched + " of " + indexOnlyFrame.Length + " bytes.");
+            }
+            Debug.Log("GaussianSplatCiChecks: index-only and legacy-mesh frames are byte-identical (" + indexOnlyFrame.Length + " bytes).");
+        }
+
+        // Asserts the converted mesh really is index-only and its quad submeshes carry the exact
+        // index pattern the no-geom shader decodes (vertexID >> 2 = splat, vertexID & 3 = corner).
+        // Returns how many vertex-buffer bytes the old generator would have shipped instead.
+        static long VerifyIndexOnlyMesh(MeshFilter filter)
+        {
+            Mesh mesh = filter.sharedMesh;
+            Material[] materials = filter.GetComponent<MeshRenderer>().sharedMaterials;
+            int maxIndexValue = 0;
+            for (int submesh = 0; submesh < mesh.subMeshCount; submesh++)
+            {
+                int[] indices = mesh.GetIndices(submesh);
+                for (int i = 0; i < indices.Length; i++)
+                {
+                    maxIndexValue = Mathf.Max(maxIndexValue, indices[i]);
+                }
+
+                Material material = submesh < materials.Length ? materials[submesh] : null;
+                bool isSplatSubmesh = material != null && material.shader != null
+                    && material.shader.name == GaussianSplatAndroidBuildProcessor.FakeSrgbNoGeomShaderName;
+                if (!isSplatSubmesh)
+                {
+                    continue;
+                }
+                if (indices.Length == 0 || indices.Length % 6 != 0)
+                {
+                    throw new System.Exception(mesh.name + " submesh " + submesh + ": splat index count " + indices.Length + " is not a positive multiple of 6.");
+                }
+                int splatCount = material.HasProperty("_SplatCount") ? material.GetInt("_SplatCount") : 0;
+                if (splatCount > 0 && indices.Length != splatCount * 6)
+                {
+                    throw new System.Exception(mesh.name + " submesh " + submesh + ": " + indices.Length + " indices for _SplatCount " + splatCount + ".");
+                }
+                int[] expected = GaussianSplatAndroidBuildProcessor.CreateQuadIndices(indices.Length / 6);
+                for (int i = 0; i < indices.Length; i++)
+                {
+                    if (indices[i] != expected[i])
+                    {
+                        throw new System.Exception(mesh.name + " submesh " + submesh + ": index " + i + " is " + indices[i] + ", expected " + expected[i] + ".");
+                    }
+                }
+            }
+
+            if (mesh.vertexCount > Mathf.Max(4, maxIndexValue / 16))
+            {
+                throw new System.Exception(mesh.name + ": vertex count " + mesh.vertexCount + " is not index-only (max index value " + maxIndexValue + ").");
+            }
+            return (long)(maxIndexValue + 1) * 12;
+        }
+
+        // The old generator's shape: a vertex buffer actually covering every index value, all
+        // zeroed, with the same indices, topologies, and bounds.
+        static Mesh BuildLegacyStyleMesh(Mesh source)
+        {
+            int maxIndexValue = 0;
+            for (int submesh = 0; submesh < source.subMeshCount; submesh++)
+            {
+                int[] indices = source.GetIndices(submesh);
+                for (int i = 0; i < indices.Length; i++)
+                {
+                    maxIndexValue = Mathf.Max(maxIndexValue, indices[i]);
+                }
+            }
+
+            Mesh mesh = new Mesh();
+            mesh.name = source.name + "_LegacyStyle";
+            mesh.indexFormat = maxIndexValue > 65535 ? IndexFormat.UInt32 : IndexFormat.UInt16;
+            mesh.vertices = new Vector3[maxIndexValue + 1];
+            mesh.subMeshCount = source.subMeshCount;
+            for (int submesh = 0; submesh < source.subMeshCount; submesh++)
+            {
+                mesh.SetIndices(source.GetIndices(submesh), source.GetTopology(submesh), submesh, false, 0);
+            }
+            mesh.bounds = source.bounds;
+            return mesh;
+        }
+
+        /// <summary>
         /// Runtime equivalence check for the two sort paths. Needs a graphics device (run without
         /// -nographics). Opens the example scene, drives one editor sort to bind the sort inputs,
         /// then verifies that (1) the compute sort leaves the blit scratch RTs released, (2) the

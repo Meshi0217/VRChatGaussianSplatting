@@ -13,7 +13,7 @@ namespace GaussianSplatting.Editor
     {
         const string GeomShaderName = "VRChatGaussianSplatting/GaussianSplatting";
         const string NoGeomShaderName = "VRChatGaussianSplatting/GaussianSplattingNoGeom";
-        const string FakeSrgbNoGeomShaderName = "VRChatGaussianSplatting/GaussianSplattingNoGeomSimpleBackToFront";
+        internal const string FakeSrgbNoGeomShaderName = "VRChatGaussianSplatting/GaussianSplattingNoGeomSimpleBackToFront";
         const string ToSrgbShaderName = "VRChatGaussianSplatting/ToSRGB";
         const string ToLinearShaderName = "VRChatGaussianSplatting/ToLinear";
         const string AlphaDepthMaskShaderName = "VRChatGaussianSplatting/AlphaDepthMask";
@@ -43,7 +43,7 @@ namespace GaussianSplatting.Editor
                       "' to the Android no-geometry path. This is an unsaved in-editor preview -- enter Play mode to test (MockHMD included), then reopen the scene WITHOUT saving to discard it.");
         }
 
-        static int ConvertScene(Scene scene)
+        internal static int ConvertScene(Scene scene)
         {
             Shader fallbackShader = Shader.Find(FakeSrgbNoGeomShaderName);
             if (fallbackShader == null)
@@ -172,35 +172,72 @@ namespace GaussianSplatting.Editor
             return true;
         }
 
+        // The no-geom vertex shader reads nothing but SV_VertexID, which on an indexed draw is the
+        // index buffer VALUE -- so the quad "vertices" exist only as index values (splat * 4 +
+        // corner) and the vertex buffer stays a 4-vertex dummy. MeshUpdateFlags.DontValidateIndices
+        // lets the indices exceed the vertex count; nothing ever fetches them (appdata declares no
+        // POSITION under GS_NO_GEOM). This replaces the old splatCount * 4 zeroed Vector3 buffer,
+        // which shipped ~48 MB of zeroes per million splats in the APK, RAM, and VRAM.
         static Mesh CreateNoGeomMesh(Mesh sourceMesh, List<Material> materials, List<SubmeshConversion> submeshes)
         {
-            int vertexCount = Mathf.Max(3, sourceMesh.vertexCount);
-            for (int i = 0; i < submeshes.Count; i++)
-            {
-                if (!submeshes[i].convertToQuads)
-                {
-                    continue;
-                }
-                vertexCount = Mathf.Max(vertexCount, GetSubmeshSplatCount(sourceMesh, materials[submeshes[i].materialIndex], submeshes[i].sourceSubmesh) * 4);
-            }
+            const MeshUpdateFlags NoValidation = MeshUpdateFlags.DontValidateIndices
+                | MeshUpdateFlags.DontRecalculateBounds | MeshUpdateFlags.DontNotifyMeshUsers;
 
-            Mesh mesh = new Mesh();
-            mesh.name = sourceMesh.name + "_AndroidNoGeom";
-            mesh.indexFormat = vertexCount > 65535 ? IndexFormat.UInt32 : sourceMesh.indexFormat;
-            mesh.vertices = CreateQuadVertices(vertexCount);
-            mesh.subMeshCount = submeshes.Count;
-
+            int[][] submeshIndices = new int[submeshes.Count][];
+            MeshTopology[] topologies = new MeshTopology[submeshes.Count];
+            bool anyUnconverted = false;
+            int totalIndexCount = 0;
+            int maxIndexValue = 0;
             for (int i = 0; i < submeshes.Count; i++)
             {
                 SubmeshConversion submesh = submeshes[i];
                 if (submesh.convertToQuads)
                 {
-                    mesh.SetIndices(CreateQuadIndices(GetSubmeshSplatCount(sourceMesh, materials[submesh.materialIndex], submesh.sourceSubmesh)), MeshTopology.Triangles, i, false, 0);
+                    submeshIndices[i] = CreateQuadIndices(GetSubmeshSplatCount(sourceMesh, materials[submesh.materialIndex], submesh.sourceSubmesh));
+                    topologies[i] = MeshTopology.Triangles;
                 }
                 else
                 {
-                    mesh.SetIndices(sourceMesh.GetIndices(submesh.sourceSubmesh), sourceMesh.GetTopology(submesh.sourceSubmesh), i, false, 0);
+                    submeshIndices[i] = sourceMesh.GetIndices(submesh.sourceSubmesh);
+                    topologies[i] = sourceMesh.GetTopology(submesh.sourceSubmesh);
+                    anyUnconverted = true;
                 }
+                totalIndexCount += submeshIndices[i].Length;
+                for (int index = 0; index < submeshIndices[i].Length; index++)
+                {
+                    maxIndexValue = Mathf.Max(maxIndexValue, submeshIndices[i][index]);
+                }
+            }
+
+            // Unconverted submeshes were already drawn with all-zero vertices by the previous
+            // implementation; keep that shape for them, at the source vertex count, so their
+            // indices stay in range.
+            int vertexCount = anyUnconverted ? Mathf.Max(4, sourceMesh.vertexCount) : 4;
+
+            Mesh mesh = new Mesh();
+            mesh.name = sourceMesh.name + "_AndroidNoGeom";
+            mesh.vertices = new Vector3[vertexCount];
+            mesh.SetIndexBufferParams(totalIndexCount, maxIndexValue > 65535 ? IndexFormat.UInt32 : IndexFormat.UInt16);
+
+            int indexStart = 0;
+            mesh.subMeshCount = submeshes.Count;
+            for (int i = 0; i < submeshes.Count; i++)
+            {
+                if (mesh.indexFormat == IndexFormat.UInt16)
+                {
+                    ushort[] shortIndices = new ushort[submeshIndices[i].Length];
+                    for (int index = 0; index < shortIndices.Length; index++)
+                    {
+                        shortIndices[index] = (ushort)submeshIndices[i][index];
+                    }
+                    mesh.SetIndexBufferData(shortIndices, 0, indexStart, shortIndices.Length, NoValidation);
+                }
+                else
+                {
+                    mesh.SetIndexBufferData(submeshIndices[i], 0, indexStart, submeshIndices[i].Length, NoValidation);
+                }
+                mesh.SetSubMesh(i, new SubMeshDescriptor(indexStart, submeshIndices[i].Length, topologies[i]), NoValidation);
+                indexStart += submeshIndices[i].Length;
             }
 
             mesh.bounds = sourceMesh.bounds;
@@ -234,13 +271,7 @@ namespace GaussianSplatting.Editor
                 : 0;
         }
 
-        static Vector3[] CreateQuadVertices(int vertexCount)
-        {
-            Vector3[] vertices = new Vector3[vertexCount];
-            return vertices;
-        }
-
-        static int[] CreateQuadIndices(int splatCount)
+        internal static int[] CreateQuadIndices(int splatCount)
         {
             int[] indices = new int[splatCount * 6];
             for (int splatIndex = 0; splatIndex < splatCount; splatIndex++)
