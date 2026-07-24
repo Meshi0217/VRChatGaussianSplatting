@@ -311,12 +311,32 @@ MIT, Copyright (c) 2025 Mykhailo Moroz. See `LICENSE`.
 
 [MichaelMoroz/VRChatGaussianSplatting](https://github.com/MichaelMoroz/VRChatGaussianSplatting)（v4）を
 VRChat から切り離した移植版です。VRChat SDK と UdonSharp は含まれず、すべて通常の MonoBehaviour と
-して URP 上で動作します。
+して URP 上で動作します。詳細は「VRChat 版との違い」を参照してください。
+
+## 機能
+
+- `GaussianSplatRenderer` によるソート済み専用のランタイムレンダリング — アクティブな全スプラットを
+  ワールド空間に結合し、単一のレンダラーとして一括ソートします
+- `.ply` / `.spz` スプラットのインポーター: `Gaussian Splatting > Import Splats...`
+- インポートモード: **LOD**（結合+詳細度階層）と **Standalone**（自己描画・事前計算ソート）
+- **LOD 階層** — インポート時に LOD ピラミッドを生成。ランタイムはシーン全体・プラットフォーム別の
+  スプラット予算に対してチャンクごとの詳細度を選択します（品質ティアと LOD Splat Cap スライダー付き）
+- **ギャラリー** UI: スプラットをリストに登録し、1 つずつ表示
+- スプラットがあればシーンレンダラーと世界空間コントロール UI を自動生成
+- すべての `GaussianSplatObject` に対するエディタ専用の Scene ビュー自動ソート
+- エディタツール: **地形コライダー**生成、スプラットに保存されたインポートメタデータからの
+  **再インポート**（完全再現 / 設定変更）
+- Android/Quest ビルドの No-Geometry スプラットシェーダーへの変換
+- **Light Volumes** — REDSIM の [VRCLightVolumes](https://github.com/REDSIM/VRCLightVolumes)（v2.1.3、MIT）を
+  `LightVolumes/` に同梱し、素の MonoBehaviour として動作。各スプラット位置のベイク済みアンビエント
+  ボリュームでスプラットを着色できます
+- バイリンガル UI（英語 / 日本語）
 
 ## 必要環境
 
 - Unity 6（6000.0.63f1 で開発）
 - Universal Render Pipeline + **Render Graph**（互換モードでは動きません）
+- **Editor Coroutines** パッケージ（`com.unity.editorcoroutines`）— Light Volumes のベイクツールに必要
 - **アルファチャンネル付き**のカラーターゲット — 下の「プロジェクト設定」参照。ここを間違えると
   警告なしに絵が壊れます
 - ジオメトリシェーダー経路は DX11/DX12/Vulkan。Quest は No-Geometry 経路を使います
@@ -331,9 +351,18 @@ VRChat から切り離した移植版です。VRChat SDK と UdonSharp は含ま
    アルファなしの `B10G11R11_UFloatPack32` になります。スプラットは `Blend OneMinusDstAlpha One`
    で合成し、デスティネーションアルファで被覆済みピクセルをステンシル除外するため、アルファなしでは
    結果が壊れます。修正では HDR を無効化して `R8G8B8A8_SRGB` にします。
-3. **MSAA オフ・Render Graph オン。**
+3. **MSAA オフ・Render Graph オン。** スプラットパスはフレーム途中でカラーターゲットを読むため
+   MSAA は使えず、パス自体が Render Graph パスなので互換モードでは一切実行されません。
 
 同じ検査は `GaussianSplatRenderer` のインスペクタにも **Fix** ボタン付きで表示されます。
+
+### 生成リソース
+
+共有のソート / combine 用 RenderTexture と描画パス用メッシュは `RTPool/` 以下にコミット済みの
+事前生成アセットで、エディタのベイクが割り当てます（ランタイムでは何も生成しません）。シーンごとの
+結合リソースは必要時に `Assets/Temp/GS_<シーン名>/` に生成されます。レンダラーが *"Splat Render
+Order texture is not assigned"* とログを出す場合、たいていはシェーダーがコンパイルできていません —
+「Unity 6 移植ノート」参照。
 
 ### VR
 
@@ -361,17 +390,40 @@ VRChat から切り離した移植版です。VRChat SDK と UdonSharp は含ま
   `GaussianSplatRenderer` なしで描画できますが、テクスチャメモリを多く使い、アーティファクトが
   出ることがあります。
 
+### インポートオプションの注意
+
+- `Import Spherical Harmonics` + `Max SH Band` — メモリ使用量は選んだバンドに応じて増えます。無効に
+  すると SH0 固定。`SH Compression` は `None`（RGB565）/ `BC1`（4 bpp）/ `BC7`（8 bpp）から選択。
+- **変形・クリーンアップ**: `Crop To Bounds`（プレビューのボックスハンドル）、`Horizon Alignment` /
+  `Wall Alignment`（プレビュー内で点を指定）、`Normalize Size`。
+- **LOD モード**: `Chunk Size`、`LOD Resampling Rate` / `LOD Reused Splats` でピラミッドを調整。
+- **Standalone モード限定**: `sRGB Color Correction` が正確な色・合成経路です（フルスクリーンの
+  カラーコピーが 2 回追加）。無効の場合は back-to-front ブレンドにフォールバックし、マルチパス
+  レンダリングは動きません。`Multi-Pass Rendering` + `Max Alpha Mask Count` はスプラットを逐次
+  チャンクに分割し、オプションでオクルージョンマスクを追加します — マスク 1 枚ごとにカラーコピーが
+  1 回増えます。
+- 2 GB を超える `.ply` は非対応です。大きなインポートは搭載 RAM に制限されます。
+
 ## シーン内 UI
 
 スプラットがあるシーンには世界空間のコントロールキャンバスが自動生成されます。この移植版は
 シングルユーザーなので、**すべてのコントロールはローカル**です（ネットワーク同期はありません）。
 
 - **ギャラリー**: UI のギャラリーリストに登録したスプラットのうち、選択中の 1 つだけを表示。
-  リスト外のオブジェクトには一切触れません。
-- 品質プリセット / SH バンド / ガウススケール / アルファカットオフ・カリング / アンチエイリアス /
-  LOD スプラット上限 / 詳細設定トグル / 言語（英語・日本語）
+  リスト外のオブジェクトには一切触れません。（マスターロックのトグルは UI スイッチとして残って
+  いますが、ロック対象のインスタンスマスターは存在しません。）
+- 品質プリセット（Very Low / Low / Medium / High）/ SH バンド / Light Volumes トグル+強度 /
+  ガウススケール / アルファカットオフ・カリング / アンチエイリアス / カメラ量子化 /
+  LOD スプラット上限（LOD スプラットがある場合）/ **詳細設定**トグル / 言語（英語・日本語）
 - 3D クリックトグル（`QualityToggle` / `TurnOnToggle`）はオブジェクトの `Collider` とカメラの
   `PhysicsRaycaster` が必要です（UI ビルダーが自動配線します）。
+
+## 地形コライダー
+
+`Gaussian Splatting > Generate Terrain Collider...`（または `GaussianSplatObject` のコンテキスト
+メニュー）は、スプラットを GPU でハイトマップにラスタライズし、Unity の `TerrainData` +
+`TerrainCollider` を生成します。トップダウンの 2.5D コライダーなので、地面・地形には向きますが、
+オーバーハングや屋内には向きません。
 
 ## VRChat 版との違い
 
@@ -388,18 +440,146 @@ VRChat から切り離した移植版です。VRChat SDK と UdonSharp は含ま
 - **ソートを `beginCameraRendering` 駆動に変更** — 描画直前のカメラに合わせてソートを再構築。
   副作用として Scene ビューのソートも機能します。
 - **`GrabPass` を全廃** — URP には GrabPass がないため、`GaussianSplatRendererFeature` が
-  `AfterRenderingTransparents` で GrabPass 連鎖を一対一で再現します（詳細は英語版
-  「Replacing GrabPass under URP」参照）。
+  `AfterRenderingTransparents` で GrabPass 連鎖を一対一で再現します（詳細は下の
+  「URP での GrabPass 置き換え」参照）。
 
 維持: インポーター、LOD システム、ギャラリー UI、結合レンダリング、地形コライダー / 再インポート
 ツール、Android/Quest No-Geometry ビルドパス。
 
+## Unity 6 移植ノート
+
+Unity 2022.3（VRChat が使うバージョン）から Unity 6 への移行では 2 つの問題が起きました。どちらも
+症状からは原因がまったく見えないタイプです。
+
+### include ファイル内の `#pragma`
+
+Unity は素の `#include` で取り込んだファイル内にある Unity 固有の `#pragma` ディレクティブを無視
+します。有効にするには `#include_with_pragmas` を使います。**Unity 2022.3 は素の `#include` でも
+解釈していましたが、Unity 6 は解釈せず**、シェーダースニペットを落とします:
+
+> Both vertex and fragment programs must be present in a shader snippet. Excluding it from
+> compilation.
+
+`GS.cginc` と `FullscreenCommon.cginc` は複数シェーダーのエントリポイント pragma を持っているため、
+Unity 6 ではそれらのシェーダーが全滅していました。しかも症状はずっと遠くで現れます: シェーダーが
+`isSupported = false` を返す → マテリアルの `HasProperty("_GS_Positions")` が false → レンダラーが
+スプラットを 0 個と判定 → ソート用 RenderTexture を一切バインドしない → *"Splat Render Order
+texture is not assigned"*。現在は両ファイルとも `#include_with_pragmas` で include しています。
+
+### マゼンタになるマテリアル
+
+`Shader.isSupported` は URP がそのシェーダーを描けるかどうかを教えて**くれません**。Standard
+シェーダーはコンパイルが通り `isSupported = true` を返しますが、URP が認識するパス（`ForwardBase` /
+`ForwardAdd`）を持たないため、URP はエラーマテリアルで置き換えます。本当に見るべきは、いずれかの
+パスが URP の認識する `LightMode` タグを持つか — もしくは `LightMode` タグ自体がなく
+`SRPDefaultUnlit` 扱いになるか — です。
+
+このパッケージのマテリアルはすべて URP で描画可能で、`VerifyMaterials`（下記）がそれを維持します。
+
 ## 検証
 
-CI 向けのバッチモードエントリポイントが 3 つあります（`CheckShaders` / `VerifyMaterials` /
-`VerifyScenes`、コマンドは英語版参照）。シェーダーのコンパイル、URP で描画不能な（マゼンタになる）
-マテリアル、サンプルシーンの再生可能性（欠落スクリプト・EventSystem・PhysicsRaycaster・ボタン配線）
-をそれぞれ検査します。いずれもグラフィックスデバイス不要です。
+CI 向けのバッチモードエントリポイントが 3 つあります。変更が何かを静かに壊していないかの確認にも
+使えます:
+
+```bash
+Unity.exe -batchmode -quit -projectPath . -executeMethod \
+  GaussianSplatting.Editor.GaussianSplatCiChecks.CheckShaders
+Unity.exe -batchmode -quit -projectPath . -executeMethod \
+  GaussianSplatting.Editor.GaussianSplatCiChecks.VerifyMaterials
+Unity.exe -batchmode -quit -projectPath . -executeMethod \
+  GaussianSplatting.Editor.GaussianSplatCiChecks.VerifyScenes
+```
+
+- **`CheckShaders`** — シェーダーエラーに加え、"must be present in a shader snippet" 警告でも失敗
+  します。警告扱いですが、実際にはそのシェーダーは何も描画しなくなっています。
+- **`VerifyMaterials`** — URP が描画できないマテリアルで失敗します。判定は `Shader.isSupported`
+  ではなくパスの `LightMode` タグで行います（「マゼンタになるマテリアル」参照）。
+- **`VerifyScenes`** — 各サンプルシーンを開き、実際に再生可能かを検査します: 欠落スクリプトなし、
+  カメラ、`InputSystemUIInputModule` 付きの `EventSystem`、`PhysicsRaycaster`、`onClick` が配線
+  済みの UI ボタン。コンポーネントはスクリプト GUID で保存されるため、YAML を grep してもどれも
+  見えません。
+
+いずれもグラフィックスデバイス不要です。逆に `Shader.isSupported` はデバイスが必要で、
+`-batchmode` 下では全シェーダーに false を返すため、あえて使っていません。
+
+サンプルシーンとプレハブは `Gaussian Splatting > Cleanup` 以下のツールで VRChat コンポーネントの
+残骸を除去済みです。上流の変更を取り込んだ後も、このツールでクリーンアップしてください。
+
+## レンダリングパイプライン
+
+- ランタイムレンダリングはソート済みの front-to-back 描画専用で、ソート済みレンダーオーダー
+  テクスチャを使います。
+- SH の選択は `_SHBand` の数値で制御し、インポート済みマテリアルが実際に持つテクスチャで
+  クランプされます。
+- スプラットは MSAA に依存できません。レンダラーはソート対象カメラの MSAA を無効化します。
+
+### URP での GrabPass 置き換え
+
+URP に `GrabPass` はなく、透明キュー全体を単一の `DrawObjectsPass` で描くため、2 つのレンダー
+キューの間に何かを挟むこともできません。`_CameraOpaqueTexture` も役に立ちません: URP はそれを
+透明パスの*前に* 1 回だけコピーしますが、スプラット連鎖はシーケンス途中のカラーターゲットを必要と
+します。
+
+突破口は、URP の透明パスが 3 つの `LightMode` タグしか拾わないことです。スプラットシェーダーに
+独自のタグを与えれば URP のパスから完全に外れ、`GaussianSplatRendererFeature` が
+`AfterRenderingTransparents` でシーケンス全体を所有して GrabPass 連鎖を一対一で再現できます:
+
+```
+copy colour -> _GS_LinearBackground        (旧 GrabPass "_LinearBackground")
+ToSRGB                                     ターゲットをガンマ空間・アルファ 0 に書き換え
+splat chunk
+  copy colour -> _GS_GrabTexture           (旧 GrabPass {})
+  AlphaDepthMask                           被覆済みピクセルをステンシル除外
+splat chunk ...
+copy colour -> _GS_SRGBBackground
+ToLinear                                   背景を減算してリニアに戻す
+```
+
+`_GS_LinearBackground` は `ToLinear` まで束縛されたままで、そこで 2 回目の読み取りが行われます —
+これにより front-to-back の累積から背景の寄与を減算でき、このコピーを `ToSRGB` に畳み込まない理由
+でもあります。
+
+レンダーキューとマテリアル配列には手を付けていないため、インポーター・combiner・インポート済みの
+全 `.mat` はそのまま動きます。`GaussianSplatRuntimeRegistry` は、フィーチャが自力では知り得ない
+唯一の情報 — どのレンダーキューに `AlphaDepthMask` があるか — を運びます（インポーターが各
+スプラットのマテリアル配列から導出します）。
+
+このパスは *unsafe* な Render Graph パスです。ラスターパスは同一テクスチャの読み書きができず、
+コピーごとにパスが分割されてしまうためです。
+
+### 呪われた基数ソート
+
+ランタイムのソーターは、ミップマップベースのプレフィックスサムで構築された基数ソートで、16 値の
+桁を 4 bit ずつソートします。VRChat にコンピュートシェーダー・バッファ・アトミックがないためこの
+形で書かれ、問題なく動作しコンピュート対応も不要なため、そのまま維持しています。`Sorting Steps`
+は順序精度とコストのトレードオフです。
+
+### 楕円体のスクリーン投影
+
+スプラットは投影ビルボードとして描画されますが、楕円のフィッティングには、標準的な 3DGS が使う
+中心ヤコビアンによるアフィン近似ではなく、楕円体の投影接線輪郭のサンプリングを使います。アフィン
+近似はぼけ・形状のずれ・シーンの非一貫性として現れ、カメラがスプラットに非常に近く視野角も大きく
+なりがちな VR では特に目立ちます。数値的には "Projecting Gaussian Ellipsoids While Avoiding
+Affine Projection Approximation"（arXiv:2411.07579v2）のような厳密な楕円体投影アプローチと同じ
+投影楕円を、float のみの輪郭サンプリングフィットで復元します。歪んだカメラモデルにも自然に拡張
+できます。
+
+## エディタ Scene ビューソート
+
+- `GaussianSplatObject` に対して自動で有効。エディタ専用で、専用の一時ソートリソースを持ちます。
+- Standalone の事前計算ソート済みマテリアルはスキップします。
+
+## クレジット
+
+- [MichaelMoroz さんの VRChatGaussianSplatting](https://github.com/MichaelMoroz/VRChatGaussianSplatting)（v4）
+  からの移植。同プロジェクト自体も [lambdalemon さんの gaussian splats](https://github.com/lambdalemon/vrcsplat)
+  の大幅改変版です
+- `.PLY` インポーターは元々 [aras-p さんの UnityGaussianSplatting](https://github.com/aras-p/UnityGaussianSplatting)
+  から改変
+- 基数ソートは [d4rkpl4y3r さんのミップマッププレフィックスサムのトリック](https://github.com/d4rkc0d3r/CompactSparseTextureDemo)
+  を使用
+- Light Volumes は [REDSIM さんの VRCLightVolumes](https://github.com/REDSIM/VRCLightVolumes)（MIT）を
+  `LightVolumes/` に同梱
 
 ## ライセンス
 
